@@ -39,6 +39,37 @@ def load_config(path: str | Path = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
+def resolve_portable_paths(cfg: dict, root: str | Path | None = None) -> dict:
+    """Resolve relative file paths in config against project root.
+
+    Skips non-path GIS keys such as asir_su_key / asir_grid_key (column names).
+    """
+    root = Path(root) if root is not None else Path.cwd()
+    skip_keys = {"asir_su_key", "asir_grid_key"}
+    path_exts = (
+        ".xlsx", ".xls", ".csv", ".shp", ".gpkg", ".docx", ".pdf",
+        ".md", ".yaml", ".yml", ".js", ".json",
+    )
+    for section in ("paths", "tables", "gis", "documents_reference_only"):
+        if section not in cfg:
+            continue
+        for k, v in list(cfg[section].items()):
+            if k in skip_keys or not isinstance(v, str) or not v:
+                continue
+            if Path(v).is_absolute():
+                continue
+            looks_path = (
+                "/" in v
+                or "\\" in v
+                or v.startswith("data")
+                or v.startswith("outputs")
+                or v.lower().endswith(path_exts)
+            )
+            if looks_path:
+                cfg[section][k] = str((root / v).resolve())
+    return cfg
+
+
 def ensure_output_dirs(cfg: dict) -> Path:
     out = Path(cfg["paths"]["output_root"])
     for sub in [
