@@ -570,16 +570,19 @@ def compare_to_doc_targets(observed: dict, expected_cfg: dict) -> pd.DataFrame:
 
 def biological_tree_flags(trees: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     cols = cfg["columns"]
-    settings = cfg["settings"]
+    # Defaults match V4_Refined config.yaml settings block.
+    settings = cfg.get("settings") or {}
+    dbh_max = float(settings.get("dbh_unusual_max_cm", 300))
+    ht_max = float(settings.get("height_unusual_max_m", 80))
     out = trees.copy()
     out["_dbh"] = pd.to_numeric(out[cols["dbh"]], errors="coerce")
     out["_ht"] = pd.to_numeric(out[cols["height"]], errors="coerce")
     flags = []
     for idx, r in out.iterrows():
         reasons = []
-        if pd.notna(r["_dbh"]) and (r["_dbh"] <= 0 or r["_dbh"] > settings["dbh_unusual_max_cm"]):
+        if pd.notna(r["_dbh"]) and (r["_dbh"] <= 0 or r["_dbh"] > dbh_max):
             reasons.append("unusual_dbh")
-        if pd.notna(r["_ht"]) and (r["_ht"] <= 0 or r["_ht"] > settings["height_unusual_max_m"]):
+        if pd.notna(r["_ht"]) and (r["_ht"] <= 0 or r["_ht"] > ht_max):
             reasons.append("unusual_height")
         if reasons:
             flags.append({
