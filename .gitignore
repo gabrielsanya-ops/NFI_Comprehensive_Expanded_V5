@@ -1,0 +1,8 @@
+﻿__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+outputs/
+_assemble_expanded_notebook.py
+_prep_colab.py

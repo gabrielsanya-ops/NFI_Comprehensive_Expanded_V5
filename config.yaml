@@ -1,0 +1,93 @@
+project:
+  name: KSA_NFI_GeoAI_Comprehensive_Expanded_V5
+  mode: audit_first_then_expand
+  case_study: Aseer_Asir_analytical_grid_plus_national_LULC
+  scope_note: Preserves V4_Refined Asir GeoAI depth; expands with national LULC Validation and Word calc biomass.
+  plots_per_su_design: 5
+  plot_uid_separator: '-'
+  random_seed: 42
+  built_upon_notebook: NFI_GeoAI_Data_Preparation_V4_Refined.ipynb
+
+paths:
+  clean_data: data/cleansed
+  shapefiles_root: data/shapefile
+  asir_shapefiles: data/shapefile/Asir_NFI_Shapefiles
+  makkah_shapefiles: data/shapefile/Makkah_NFI_Shapefiles
+  validation_documents: data/docs
+  lulc_validated_csv: data/lulc/lucs_office_validated_esa_esri_ndvi.csv
+  calculation_docx: data/docs/NFI_ KSA Calculation_Trees&shrubs.docx
+  calc_extract: data/docs/_calc_doc_extract.md
+  output_root: outputs
+
+tables:
+  su: data/cleansed/nfi_of_ksa_program_su.xlsx
+  plot: data/cleansed/plot.xlsx
+  trees: data/cleansed/trees.xlsx
+  vegetation_cover: data/cleansed/vegetation_cover.xlsx
+  lucs: data/cleansed/lucs1.xlsx
+  regeneration: data/cleansed/regeneration1.xlsx
+  shrubs: data/cleansed/shrubs_bushes.xlsx
+  fire: data/cleansed/fire_evidence1.xlsx
+  deadwood: data/cleansed/deadwood1.xlsx
+  litter: data/cleansed/litter1.xlsx
+  environmental_problems: data/cleansed/environmental_problems.xlsx
+  fauna: data/cleansed/fauna.xlsx
+  reference: data/cleansed/reference_tbl.xlsx
+  teams: data/cleansed/teams_members.xlsx
+
+gis:
+  asir_su: data/shapefile/Asir_NFI_Shapefiles/Asir_SU_Final.shp
+  asir_grid: data/shapefile/Asir_NFI_Shapefiles/Asir_Grid_15_30_Final.shp
+  makkah_su: data/shapefile/Makkah_NFI_Shapefiles/Makkah_SU_Final.shp
+  makkah_grid: data/shapefile/Makkah_NFI_Shapefiles/Makkah_Grid_15_30_Final.shp
+  asir_su_key: SU
+  asir_grid_key: SU
+
+documents_reference_only:
+  gate1_aseer_zero_tree_sus: data/docs/NFI Trees Data - Validation Point 1 (Aseer Region).docx
+  gate2_aseer_plot_completeness: data/docs/NFI Trees Data (Aseer) - Validation Point 2 (Plot Completeness).docx
+
+columns:
+  su_id_in_su_master: su_no
+  su_id_in_child_tables: nfi_of_ksa_program_su_su_no
+  plot_id_in_plot: plot_id1
+  plot_id_in_child_tables: plot_plot_id1
+  region_en: su_group_region_e
+  governorate_en: su_group_gover_e
+  lat_field: plot_info1_plot_coor1_y
+  lon_field: plot_info1_plot_coor1_x
+  lat_db: plot_info1_coor_db_y
+  lon_db: plot_info1_coor_db_x
+  srs_field: plot_info1_plot_coor1_srs
+  srs_db: plot_info1_coor_db_srs
+  dbh: tree_dbh
+  height: tree_height
+
+aseer_gate_expected:
+  total_sus: 430
+  sus_with_trees: 240
+  sus_no_trees: 190
+  expected_plots: 2150
+  plots_in_zero_tree_sus: 950
+  plots_with_trees: 656
+  gate2_plots: 544
+  gate2_sus_affected: 204
+
+tree_biomass:
+  form_factor: 0.65
+  wood_density: 0.6
+  bef: 2.0
+  root_shoot: 0.28
+  carbon_fraction: 0.47
+  co2eq_factor: 3.67
+  conversion_factor_ha: 10
+  plot_area_m2: 1000
+
+policy:
+  remote_height_imputation: false
+  design_based_estimates: false
+  carbon_label: provisional
+  preserve_original_v4_cells: true
+
+lidar_global:
+  product: GEDI_L2A_GEDI02_A

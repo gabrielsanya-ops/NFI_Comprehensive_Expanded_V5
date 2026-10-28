@@ -1,0 +1,21 @@
+field_lclu,Annual Crop,Barren Land,Built up area,Cultivated,Fallow,Forest,Inland water,Lake,Natural,Natural Grassland,Natural regenerated forest,Other,Other land,Other woodedland,Perennial crop,Pond,Quarry/Mining site,Raffia/Palms -,Wooded grassland,Wooded wetland
+Annual Crop,163,0,30,0,0,0,0,0,327,0,0,0,0,0,0,0,0,0,14,0
+Barren Land,0,9935,12,4,0,42,0,0,120,0,1,0,0,0,0,0,0,0,37,0
+Built up area,0,0,242,4,0,1,0,2,226,0,0,0,0,0,0,2,0,0,3,0
+Cultivated,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+Fallow,0,0,0,0,0,0,0,0,13,0,0,0,0,0,0,0,0,0,0,0
+Forest,0,0,34,6,0,35,0,0,451,0,0,0,0,0,0,0,0,0,91,0
+Inland water,0,0,1,0,0,1,7,0,14,0,0,0,0,0,0,0,0,0,0,0
+Lake,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0
+Natural,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+Natural Grassland,0,0,14,3,0,19,0,0,1380,1748,0,0,0,0,0,1,0,0,0,0
+Natural regenerated forest,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+Other,0,0,1,0,0,0,0,0,7,0,0,0,0,0,0,0,0,0,0,0
+Other land,0,0,25,3,0,25,0,1,1767,0,0,0,0,0,0,0,0,0,28,0
+Other woodedland,0,0,3,1,0,2,0,0,140,0,0,0,0,15,0,0,0,0,0,0
+Perennial crop,0,0,0,0,0,0,0,0,7,0,0,0,0,0,3,0,0,0,1,0
+Pond,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+Quarry/Mining site,0,0,2,0,0,0,0,0,28,0,0,0,0,0,0,0,0,0,0,0
+Raffia/Palms -,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0
+Wooded grassland,0,0,12,6,0,28,0,0,1256,0,0,0,0,0,0,0,0,0,6,0
+Wooded wetland,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0

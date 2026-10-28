@@ -1,0 +1,266 @@
+# Original notebook inventory
+
+## NFI_GeoAI_Data_Preparation.ipynb
+- Size: 23.57 MB
+- Cells: 36 (code 18, markdown 18)
+
+### Headings
+- Cell 0: KSA National Forest Inventory: Asir GeoAI data preparation and validation
+- Cell 1: 0. Environment, configuration, and StageStore
+- Cell 3: 1. Tabular ingest and Asir GIS sampling-unit universe
+- Cell 5: 2. Inventory cell area appropriation and policy checks
+- Cell 7: 3. Long-form SU x plot presence lattice (anti-clip)
+- Cell 9: 4. Gate 1 and Gate 2 evaluation against baked targets
+- Cell 11: 5. Regional roll-ups and SU-number graphics
+- Cell 13: 6. Data cleaning and value-quality control
+- Cell 15: 7. Ready clean deliverable for maps and graphs
+- Cell 17: 8. Exploratory data analysis and statistical figure pack
+- Cell 19: 9. Plot-level feature engineering for downstream models
+- Cell 21: 10. Integrity scorecard: clip/pivot workflow versus anti-clip long-form
+- Cell 23: 11. Cartography: static figures and interactive Leaflet maps
+- Cell 25: 12. Spatial left-join QA of plot coordinates to the analytical grid
+- Cell 27: 13. SU-grouped supervised learning and diagnostic evaluation
+- Cell 29: 14. StageStore inventory of intermediate products
+- Cell 31: 15. Row-conservation ledger, readiness checklist, and validated exports
+- Cell 33: 16. Field tree height versus Meta / WRI global canopy-height model (CHM v2)
+
+### Keyword hits in sources
+- gate: 66
+- map: 50
+- missing: 16
+- lidar: 7
+- spatial: 7
+- esri: 4
+- shap: 3
+- biomass: 1
+
+### Cell index
+- [0] markdown (2035 chars) KSA National Forest Inventory: Asir GeoAI data preparation and validation
+- [1] markdown (49 chars) 0. Environment, configuration, and StageStore
+- [2] code (2639 chars) from pathlib import Path import sys, warnings import numpy as np import pandas as pd import matplotlib.pyplot as plt imp
+- [3] markdown (57 chars) 1. Tabular ingest and Asir GIS sampling-unit universe
+- [4] code (1256 chars) tables_raw, tables = {}, {} for name, path in CFG["tables"].items(): df = read_first_sheet(path) tables_raw[name] = df i
+- [5] markdown (58 chars) 2. Inventory cell area appropriation and policy checks
+- [6] code (673 chars) area = area_appropriation_audit(asir_grid, CFG) display(area["policy"]) display(area["summary"]) area["summary"].to_csv(
+- [7] markdown (205 chars) 3. Long-form SU x plot presence lattice (anti-clip)
+- [8] code (1033 chars) # Wrong vs right clip behaviour display(demonstrate_clip_loss(asir_su, trees)) # Long-form SU x plot (2150 rows) - zeros
+- [9] markdown (57 chars) 4. Gate 1 and Gate 2 evaluation against baked targets
+- [10] code (1441 chars) gate1 = aseer_gate1_zero_tree_sus(asir_su, trees) gate2 = aseer_gate2_plot_completeness( asir_su, trees, plots_per_su=CF
+- [11] markdown (325 chars) 5. Regional roll-ups and SU-number graphics
+- [12] code (1205 chars) rolls = region_governorate_summaries(longform, su_tree) display(rolls["by_region"]) display(rolls["by_governorate"].sort
+- [13] markdown (692 chars) 6. Data cleaning and value-quality control
+- [14] code (3973 chars) # ============================================================================= # CELL: Data cleaning and value-quality 
+- [15] markdown (356 chars) 7. Ready clean deliverable for maps and graphs
+- [16] code (2769 chars) # ============================================================================= # CELL: Ready clean tables + SU graphics
+- [17] markdown (541 chars) 8. Exploratory data analysis and statistical figure pack
+- [18] code (10003 chars) # Prefer section-6 derived cleaned frames; otherwise build a fresh Asir slice universe = set(asir_su["SU_UID"].astype(st
+- [19] markdown (59 chars) 9. Plot-level feature engineering for downstream models
+- [20] code (638 chars) plot_feat = engineer_plot_tree_features(trees_aseer, plot_aseer, CFG) # attach region/gov from SU GIS su_attrs = asir_su
+- [21] markdown (75 chars) 10. Integrity scorecard: clip/pivot workflow versus anti-clip long-form
+- [22] code (483 chars) cmp = compare_old_vs_new_method(asir_su, trees, longform, GATE) score = accuracy_scorecard(cmp) display(cmp) display(sco
+- [23] markdown (364 chars) 11. Cartography: static figures and interactive Leaflet maps
+- [24] code (1151 chars) print("=" * 72) print("SECTION 11 - Cartography with basemaps") print("=" * 72) print("Static maps: contextily tiles und
+- [25] markdown (71 chars) 12. Spatial left-join QA of plot coordinates to the analytical grid
+- [26] code (264 chars) plot_spatial = left_sjoin_plots_to_su_grid(plots_to_geodataframe(plot_aseer), asir_grid) display(plot_spatial["spatial_j
+- [27] markdown (366 chars) 13. SU-grouped supervised learning and diagnostic evaluation
+- [28] code (1891 chars) protocol = modelling_protocol_table() display(protocol) # Where normalization is required in the final analysis norm_pol
+- [29] markdown (53 chars) 14. StageStore inventory of intermediate products
+- [30] code (254 chars) manifest = STAGES.list_stages() manifest.to_csv(OUT/"stages"/"stage_manifest.csv", index=False) display(manifest[["stage
+- [31] markdown (75 chars) 15. Row-conservation ledger, readiness checklist, and validated exports
+- [32] code (2101 chars) ledger = pd.DataFrame([ row_conservation("asir_su", GATE["total_sus"], len(asir_su)), row_conservation("longform_plots",
+- [33] markdown (248 chars) 16. Field tree height versus Meta / WRI global canopy-height model (CHM v2)
+- [34] code (1235 chars) from nfi_lidar_global import ( extract_meta_chm_at_plots, height_comparison_summary, plot_field_vs_chm, train_height_mod
+- [35] code (1021 chars) ht_models = train_height_models_field_vs_chm( chm_join, out_dir=OUT / "figures" / "height_chm_models", random_state=42 )
+
+## NFI_GeoAI_Data_Preparation_V3_LiDAR_Validation.ipynb
+- Size: 16.7 MB
+- Cells: 45 (code 22, markdown 23)
+
+### Headings
+- Cell 0: At a glance
+- Cell 2: 0 · Environment, configuration and StageStore
+- Cell 4: 1 · Tabular ingest and Asir sampling-unit universe
+- Cell 6: 2 · Inventory-cell area appropriation and policy checks
+- Cell 8: 3 · Long-form SU × plot presence lattice (anti-clip)
+- Cell 10: 4 · Gate 1 and Gate 2 evaluation against baked targets
+- Cell 12: 5 · Regional roll-ups and SU-number graphics
+- Cell 14: 6 · Data cleaning and value-quality control
+- Cell 16: 7 · Ready clean deliverable for maps and graphs
+- Cell 18: 7b · Field vs office coordinate cross-check
+- Cell 20: 8 · Exploratory data analysis and statistical figure pack
+- Cell 21: Analytical-population gate
+- Cell 23: Statistical validation gate
+- Cell 26: 9 · Integrity scorecard: clip/pivot workflow versus anti-clip long-form
+- Cell 28: 10. Cartography: static figures, Leaflet maps, and NFI-style HTML atlas
+- Cell 30: 11. Beautiful HTML atlas (PDF-theme parity)
+- Cell 32: 12 · Spatial left-join QA of plot coordinates to the analytical grid
+- Cell 34: GEDI L2A LiDAR validation (primary remote height product)
+- Cell 36: Easy GEDI L2A download
+- Cell 38: 13 · StageStore inventory of intermediate products
+- Cell 39: GeoAI modelling protocol : frozen before modelling
+- Cell 42: 14 · Row-conservation ledger, readiness checklist and validated exports
+- Cell 44: Scientific safeguard
+
+### Keyword hits in sources
+- gedi: 227
+- map: 164
+- lidar: 129
+- gate: 124
+- imputation: 51
+- missing: 37
+- spatial: 22
+- shap: 8
+- correlation: 7
+- esri: 5
+- biomass: 4
+- carbon: 4
+- moran: 3
+- anova: 2
+- choropleth: 1
+- esa: 1
+
+### Cell index
+- [0] markdown (4445 chars) At a glance
+- [1] code (30886 chars) # ============================================================================= # PRESENTATION KIT - display helpers onl
+- [2] markdown (365 chars) 0 · Environment, configuration and StageStore
+- [3] code (4115 chars) from pathlib import Path import re import sys, warnings, platform import numpy as np import pandas as pd import matplotl
+- [4] markdown (296 chars) 1 · Tabular ingest and Asir sampling-unit universe
+- [5] code (2037 chars) banner(1, "Tabular ingest & Asir sampling-unit universe", "Read source tables · attach join keys · load the 430-SU GIS m
+- [6] markdown (347 chars) 2 · Inventory-cell area appropriation and policy checks
+- [7] code (1240 chars) banner(2, "Area appropriation & policy checks", "Attach Area_H by SU key · compare with equal-area and Mercator-misuse a
+- [8] markdown (354 chars) 3 · Long-form SU × plot presence lattice (anti-clip)
+- [9] code (1867 chars) banner(3, "Long-form SU × plot presence lattice", "Inner join versus LEFT join · 2,150-row plot lattice with zero cells 
+- [10] markdown (309 chars) 4 · Gate 1 and Gate 2 evaluation against baked targets
+- [11] code (2775 chars) banner(4, "Gate 1 & Gate 2 evaluation", "Reconcile observed counts with the baked validation-package targets") gate1 = a
+- [12] markdown (347 chars) 5 · Regional roll-ups and SU-number graphics
+- [13] code (1834 chars) banner(5, "Regional roll-ups & SU-number graphics", "Region and governorate tables · non-map SU charts in legend colours
+- [14] markdown (760 chars) 6 · Data cleaning and value-quality control
+- [15] code (4790 chars) banner(6, "Data cleaning & value-quality control", "Spelling · illegal characters · field types · derived clean tables ·
+- [16] markdown (345 chars) 7 · Ready clean deliverable for maps and graphs
+- [17] code (3284 chars) banner(7, "Ready clean deliverable for maps & graphs", "Join cleaned plots, trees and SU master · reporting aliases · re
+- [18] markdown (375 chars) 7b · Field vs office coordinate cross-check
+- [19] code (2090 chars) banner("7b", "Field vs office coordinate cross-check", "Mapping Approach PDF · paired Field GPS vs Office/DB") callout("
+- [20] markdown (636 chars) 8 · Exploratory data analysis and statistical figure pack
+- [21] markdown (292 chars) Analytical-population gate
+- [22] code (3174 chars) banner(8, "Analytical population & zero/null semantics", "Classify measured trees · preserve missingness · define eligib
+- [23] markdown (239 chars) Statistical validation gate
+- [24] code (2309 chars) banner(9, "Statistical QA before forest calculations", "Completeness · robust distribution metrics · outlier flags · no 
+- [25] code (15461 chars) banner(10, "Exploratory data analysis & statistical figure pack", "Structure · missingness · distributions · relationshi
+- [26] markdown (241 chars) 9 · Integrity scorecard: clip/pivot workflow versus anti-clip long-form
+- [27] code (970 chars) banner(11, "Integrity scorecard", "Clip/pivot workflow versus anti-clip long-form") cmp = compare_old_vs_new_method(asir
+- [28] markdown (406 chars) 10. Cartography: static figures, Leaflet maps, and NFI-style HTML atlas
+- [29] code (2662 chars) banner(12, "Cartography with basemaps", "Interactive Leaflet maps · zoom/pan in the HTML atlas (no OSM)") callout("info"
+- [30] markdown (794 chars) 11. Beautiful HTML atlas (PDF-theme parity)
+- [31] code (2876 chars) banner(13, "Beautiful HTML atlas", "NFI poster-style interactive maps with satellite basemaps") print("Building atlas fr
+- [32] markdown (227 chars) 12 · Spatial left-join QA of plot coordinates to the analytical grid
+- [33] code (647 chars) banner(14, "Spatial left-join QA of plot coordinates", "Plots joined to the analytical grid with a LEFT join, so nothing
+- [34] markdown (881 chars) GEDI L2A LiDAR validation (primary remote height product)
+- [35] code (32549 chars) banner(15, "GEDI L2A LiDAR cross-check: height & elevation", "GEDI02_A footprints · RH98 vs plot upper-canopy · 3D scene
+- [36] markdown (333 chars) Easy GEDI L2A download
+- [37] code (1738 chars) # Optional GEDI L2A download - run this cell ONLY when you are ready to log in / download. # Do NOT leave this running u
+- [38] markdown (184 chars) 13 · StageStore inventory of intermediate products
+- [39] markdown (268 chars) GeoAI modelling protocol : frozen before modelling
+- [40] code (1759 chars) banner(16, "GeoAI validation & fine-tuning protocol", "Spatial CV · nested tuning · uncertainty · applicability · no imp
+- [41] code (548 chars) banner(17, "StageStore inventory", "Every intermediate product saved during this run") manifest = STAGES.list_stages() m
+- [42] markdown (345 chars) 14 · Row-conservation ledger, readiness checklist and validated exports
+- [43] code (3789 chars) banner(18, "Ledger, readiness & validated exports", "Row conservation · sign-off checklist · export inventory") sub("A",
+- [44] markdown (437 chars) Scientific safeguard
+
+## NFI_GeoAI_Data_Preparation_V4_Refined.ipynb
+- Size: 20.08 MB
+- Cells: 48 (code 23, markdown 25)
+
+### Headings
+- Cell 0: At a glance
+- Cell 1: Setup · presentation kit
+- Cell 3: 0 · Environment, configuration and StageStore
+- Cell 5: 1 · Tabular ingest and Asir sampling-unit universe
+- Cell 7: 2 · Inventory-cell area appropriation and policy checks
+- Cell 9: 3 · Long-form SU × plot presence lattice (anti-clip)
+- Cell 11: 4 · Gate 1 and Gate 2 evaluation against baked targets
+- Cell 13: 5 · Regional roll-ups and SU-number graphics
+- Cell 15: 6 · Data cleaning and value-quality control
+- Cell 17: 7 · Ready clean deliverable for maps and graphs
+- Cell 19: 7b · Field vs office coordinate cross-check
+- Cell 21: 8 · Analytical-population gate
+- Cell 23: 9 · Statistical validation gate
+- Cell 25: 10 · Exploratory data analysis and statistical figure pack
+- Cell 27: 11 · Integrity scorecard: clip/pivot workflow versus anti-clip long-form
+- Cell 29: 12 · Cartography: interactive grid-review maps
+- Cell 31: 13 · Beautiful HTML atlas (PDF-theme parity)
+- Cell 33: 14 · Spatial left-join QA of plot coordinates to the analytical grid
+- Cell 35: 15 · GEDI L2A LiDAR validation (primary remote height product)
+- Cell 37: Optional helper · GEDI L2A download
+- Cell 39: 16 · GeoAI modelling protocol: frozen before modelling
+- Cell 41: 17 · StageStore inventory of intermediate products
+- Cell 43: 18 · Row-conservation ledger, readiness checklist and validated exports
+- Cell 45: 19 · Executive summary and report export
+- Cell 47: Scientific safeguard
+
+### Keyword hits in sources
+- gedi: 245
+- map: 223
+- gate: 216
+- lidar: 131
+- missing: 59
+- imputation: 59
+- spatial: 35
+- biomass: 13
+- shap: 13
+- carbon: 10
+- correlation: 7
+- anova: 5
+- esri: 4
+- moran: 3
+- lisa: 1
+- choropleth: 1
+
+### Cell index
+- [0] markdown (7532 chars) At a glance
+- [1] markdown (810 chars) Setup · presentation kit
+- [2] code (38106 chars) # ============================================================================= # PRESENTATION KIT · display helpers onl
+- [3] markdown (1154 chars) 0 · Environment, configuration and StageStore
+- [4] code (6095 chars) # ============================================================================= # SECTION 0 · ENVIRONMENT, CONFIGURATION
+- [5] markdown (851 chars) 1 · Tabular ingest and Asir sampling-unit universe
+- [6] code (3790 chars) # ============================================================================= # SECTION 1 · TABULAR INGEST AND ASIR SA
+- [7] markdown (1099 chars) 2 · Inventory-cell area appropriation and policy checks
+- [8] code (4040 chars) # ============================================================================= # SECTION 2 · INVENTORY-CELL AREA APPROP
+- [9] markdown (786 chars) 3 · Long-form SU × plot presence lattice (anti-clip)
+- [10] code (3371 chars) # ============================================================================= # SECTION 3 · LONG-FORM SU × PLOT PRESEN
+- [11] markdown (981 chars) 4 · Gate 1 and Gate 2 evaluation against baked targets
+- [12] code (6950 chars) # ============================================================================= # SECTION 4 · GATE 1 AND GATE 2 EVALUATI
+- [13] markdown (1080 chars) 5 · Regional roll-ups and SU-number graphics
+- [14] code (4078 chars) # ============================================================================= # SECTION 5 · REGIONAL ROLL-UPS AND SU-N
+- [15] markdown (1380 chars) 6 · Data cleaning and value-quality control
+- [16] code (6955 chars) # ============================================================================= # SECTION 6 · DATA CLEANING AND VALUE-QU
+- [17] markdown (904 chars) 7 · Ready clean deliverable for maps and graphs
+- [18] code (5298 chars) # ============================================================================= # SECTION 7 · READY CLEAN DELIVERABLE FO
+- [19] markdown (1145 chars) 7b · Field vs office coordinate cross-check
+- [20] code (6326 chars) # ============================================================================= # SECTION 7b · FIELD VS OFFICE COORDINAT
+- [21] markdown (993 chars) 8 · Analytical-population gate
+- [22] code (5781 chars) # ============================================================================= # SECTION 8 · ANALYTICAL POPULATION AND 
+- [23] markdown (1200 chars) 9 · Statistical validation gate
+- [24] code (4424 chars) # ============================================================================= # SECTION 9 · STATISTICAL QA BEFORE FORE
+- [25] markdown (1364 chars) 10 · Exploratory data analysis and statistical figure pack
+- [26] code (21483 chars) # ============================================================================= # SECTION 10 · EXPLORATORY DATA ANALYSIS
+- [27] markdown (789 chars) 11 · Integrity scorecard: clip/pivot workflow versus anti-clip long-form
+- [28] code (3682 chars) # ============================================================================= # SECTION 11 · INTEGRITY SCORECARD (CLIP
+- [29] markdown (893 chars) 12 · Cartography: interactive grid-review maps
+- [30] code (3943 chars) # ============================================================================= # SECTION 12 · CARTOGRAPHY (INTERACTIVE 
+- [31] markdown (1474 chars) 13 · Beautiful HTML atlas (PDF-theme parity)
+- [32] code (4717 chars) # ============================================================================= # SECTION 13 · BEAUTIFUL HTML ATLAS (PDF
+- [33] markdown (737 chars) 14 · Spatial left-join QA of plot coordinates to the analytical grid
+- [34] code (2310 chars) # ============================================================================= # SECTION 14 · SPATIAL LEFT-JOIN QA OF P
+- [35] markdown (2132 chars) 15 · GEDI L2A LiDAR validation (primary remote height product)
+- [36] code (26330 chars) # ============================================================================= # SECTION 15 · GEDI L2A LIDAR CROSS-CHEC
+- [37] markdown (754 chars) Optional helper · GEDI L2A download
+- [38] code (2386 chars) # ============================================================================= # OPTIONAL HELPER · GEDI L2A DOWNLOAD # 
+- [39] markdown (867 chars) 16 · GeoAI modelling protocol: frozen before modelling
+- [40] code (3696 chars) # ============================================================================= # SECTION 16 · GEOAI VALIDATION AND FINE
+- [41] markdown (531 chars) 17 · StageStore inventory of intermediate products
+- [42] code (1776 chars) # ============================================================================= # SECTION 17 · STAGESTORE INVENTORY # Re
+- [43] markdown (901 chars) 18 · Row-conservation ledger, readiness checklist and validated exports
+- [44] code (5639 chars) # ============================================================================= # SECTION 18 · LEDGER, READINESS AND VAL
+- [45] markdown (869 chars) 19 · Executive summary and report export
+- [46] code (8554 chars) # ============================================================================= # SECTION 19 · EXECUTIVE SUMMARY AND REP
+- [47] markdown (435 chars) Scientific safeguard
