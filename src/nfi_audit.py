@@ -361,14 +361,15 @@ def coordinate_checks(df: pd.DataFrame, lat: str, lon: str, source: str,
 
 def plot_coordinate_qa(plot: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     cols = cfg["columns"]
-    settings = cfg["settings"]
+    # Defaults match coordinate_checks() and V4_Refined config settings block.
+    settings = cfg.get("settings") or {}
     out = plot.copy()
     out["lon_field_orig"] = pd.to_numeric(out[cols["lon_field"]], errors="coerce")
     out["lat_field_orig"] = pd.to_numeric(out[cols["lat_field"]], errors="coerce")
     out["lon_db_orig"] = pd.to_numeric(out[cols["lon_db"]], errors="coerce")
     out["lat_db_orig"] = pd.to_numeric(out[cols["lat_db"]], errors="coerce")
-    lon_lo, lon_hi = settings["saudi_lon_range"]
-    lat_lo, lat_hi = settings["saudi_lat_range"]
+    lon_lo, lon_hi = settings.get("saudi_lon_range", [34.0, 56.0])
+    lat_lo, lat_hi = settings.get("saudi_lat_range", [16.0, 33.0])
 
     def _ok(lon, lat):
         return (lon >= lon_lo) & (lon <= lon_hi) & (lat >= lat_lo) & (lat <= lat_hi)

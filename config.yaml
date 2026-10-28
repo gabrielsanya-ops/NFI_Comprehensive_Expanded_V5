@@ -91,3 +91,21 @@ policy:
 
 lidar_global:
   product: GEDI_L2A_GEDI02_A
+
+# Coordinate and QC envelopes (same keys as V4_Refined nfi_geoai_data_preparation/config.yaml)
+settings:
+  expected_crs_geographic: 'EPSG:4326'
+  saudi_lon_range: [34.0, 56.0]
+  saudi_lat_range: [16.0, 33.0]
+  coord_displacement_warn_m: 100
+  coord_displacement_fail_m: 1000
+  dbh_unusual_max_cm: 300
+  height_unusual_max_m: 80
+  do_not_overwrite_sources: true
+  recursive_scan: true
+  fail_on_row_loss: true
+  preserve_all_source_rows: true
+  linkage_strategy: crosswalk_then_spatial
+  spatial_cv_required: true
+  random_seed: 42
+  biomass_carbon_blocked_until_gates_pass: true
