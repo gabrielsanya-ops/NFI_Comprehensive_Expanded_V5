@@ -200,6 +200,7 @@ def write_national_dashboard_atlas(
     out_dir: Path,
     catalog: pd.DataFrame | None = None,
     voronoi_fc: dict[str, Any] | None = None,
+    country_fc: dict[str, Any] | None = None,
 ) -> Path:
     """Write dashboard atlas: index.html (+ embedded data) and atlas_data.json."""
     out_dir = Path(out_dir)
@@ -210,16 +211,30 @@ def write_national_dashboard_atlas(
             voronoi_fc = build_voronoi_geojson(themes_df)
         except Exception:
             voronoi_fc = {"type": "FeatureCollection", "features": []}
+    if country_fc is None:
+        try:
+            from nfi_national_boundary import load_country, country_geojson
+            country_fc = country_geojson(load_country())
+        except Exception:
+            country_fc = None
     payload = build_atlas_payload(themes_df, catalog=catalog, voronoi_fc=voronoi_fc)
+    if country_fc is not None:
+        payload["country"] = country_fc
+        payload["meta"]["has_country_boundary"] = True
     data_path = out_dir / "atlas_data.json"
     raw = json.dumps(payload, ensure_ascii=False)
     data_path.write_text(raw, encoding="utf-8")
 
-    # Embed JSON so file:// open works without a local web server / CORS issues
+    # Prefer external JSON to keep index.html small on disk-constrained machines.
+    # Fallback embed only a slim payload (points + country, no voronoi) for file:// use.
     index = out_dir / "index.html"
+    slim = dict(payload)
+    # Drop heavy voronoi from embedded copy; still available in atlas_data.json
+    slim["voronoi"] = {"type": "FeatureCollection", "features": []}
+    slim_raw = json.dumps(slim, ensure_ascii=False)
     html = _DASHBOARD_HTML.replace(
         "/*__ATLAS_DATA_PLACEHOLDER__*/",
-        f"window.ATLAS_DATA = {raw};",
+        f"window.ATLAS_DATA = {slim_raw};",
     )
     index.write_text(html, encoding="utf-8")
     return index
@@ -809,11 +824,21 @@ function boot(data){
   STATE.data = data;
   fillThemeList();
   fillAdminNames();
+  if(data.country){
+    L.geoJSON(data.country, {
+      style: {color:'#f8fafc', weight:2.2, fillOpacity:0, opacity:0.95},
+      interactive:false
+    }).addTo(MAP);
+    const cb = L.geoJSON(data.country).getBounds();
+    if(cb.isValid()) MAP.fitBounds(cb.pad(0.04));
+  }
   redrawLayer();
-  const feats = data.geojson.features || [];
-  if(feats.length){
-    const b = L.geoJSON(data.geojson).getBounds();
-    if(b.isValid()) MAP.fitBounds(b.pad(0.05));
+  if(!data.country){
+    const feats = data.geojson.features || [];
+    if(feats.length){
+      const b = L.geoJSON(data.geojson).getBounds();
+      if(b.isValid()) MAP.fitBounds(b.pad(0.05));
+    }
   }
 }
 /*__ATLAS_DATA_PLACEHOLDER__*/

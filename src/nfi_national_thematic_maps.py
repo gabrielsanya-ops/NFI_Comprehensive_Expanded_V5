@@ -287,6 +287,7 @@ def _write_su_theme_map(
     blurb: str,
     out_html: Path,
     center: list[float],
+    country=None,
 ) -> Path | None:
     import folium
     from folium.plugins import Fullscreen, MousePosition
@@ -301,6 +302,12 @@ def _write_su_theme_map(
     _add_free_basemaps(m)
     Fullscreen().add_to(m)
     MousePosition().add_to(m)
+    if country is not None:
+        try:
+            from nfi_national_boundary import attach_country_to_folium
+            attach_country_to_folium(m, country)
+        except Exception:
+            pass
     fg = folium.FeatureGroup(name=title, show=True)
 
     if kind == "binary":
@@ -380,7 +387,10 @@ def _write_su_theme_map(
         return None
 
     folium.LayerControl(collapsed=False).add_to(m)
-    _banner(m, title, blurb + " | provisional sample metrics where biomass-related")
+    _banner(
+        m, title,
+        blurb + " | satellite basemap | clipped view to KSA Country.shp where attached | provisional sample metrics where biomass-related",
+    )
     out_html.parent.mkdir(parents=True, exist_ok=True)
     m.save(str(out_html))
     return out_html
@@ -493,6 +503,13 @@ def produce_national_thematic_maps(
     static: dict[str, str] = {}
     catalog_rows = []
 
+    country_early = None
+    try:
+        from nfi_national_boundary import load_country
+        country_early = load_country(cfg=cfg)
+    except Exception:
+        country_early = None
+
     # Always: clustered plots
     p_plots = write_national_plots_cluster_map(plot, cfg, html_dir / "interactive_national_plots.html")
     interactive["plots"] = str(p_plots)
@@ -519,6 +536,7 @@ def produce_national_thematic_maps(
             blurb=blurb,
             out_html=html_path,
             center=center,
+            country=country_early,
         )
         if wrote:
             interactive[theme_id] = str(wrote)
@@ -539,9 +557,38 @@ def produce_national_thematic_maps(
     catalog.to_csv(out_root / "maps" / "national_thematic_catalog.csv", index=False)
 
     carto: dict[str, Any] = {}
+    regional: dict[str, Any] = {}
+    country = country_early
+    try:
+        from nfi_national_boundary import (
+            load_country, load_provinces, write_static_map_clipped,
+            write_regional_choropleths,
+        )
+        if country is None:
+            country = load_country(cfg=cfg)
+        provinces = load_provinces(cfg=cfg)
+        clipped_dir = out_root / "maps" / "national" / "clipped_satellite"
+        clipped_dir.mkdir(parents=True, exist_ok=True)
+        for theme_id, title, value_col, kind, category, blurb in NATIONAL_THEMES:
+            if kind == "special_plots" or not value_col:
+                continue
+            p = write_static_map_clipped(
+                themes_df, country=country, value_col=value_col, title=title,
+                out_path=clipped_dir / f"clipped_{theme_id}.png", kind=kind,
+            )
+            if p:
+                static[f"clipped_{theme_id}"] = str(p)
+        regional_dir = out_root / "maps" / "national" / "regional"
+        regional_paths = write_regional_choropleths(themes_df, provinces, country, regional_dir)
+        for k, p in regional_paths.items():
+            static[f"regional_{k}"] = str(p)
+        regional = {"paths": {k: str(v) for k, v in regional_paths.items()}}
+    except Exception as exc:
+        regional = {"error": str(exc)}
+
     try:
         from nfi_national_cartography import write_cartographic_suite
-        carto = write_cartographic_suite(themes_df, out_root)
+        carto = write_cartographic_suite(themes_df, out_root, country_gdf=country)
         for k, p in (carto.get("hexbin_png") or {}).items():
             static[f"hexbin_{k}"] = p
         for k, p in (carto.get("voronoi_png") or {}).items():
@@ -555,4 +602,6 @@ def produce_national_thematic_maps(
         "static": static,
         "catalog": catalog,
         "cartography": carto,
+        "regional": regional,
+        "country": country,
     }

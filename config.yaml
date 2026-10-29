@@ -46,6 +46,11 @@ gis:
   makkah_grid: data/shapefile/Makkah_NFI_Shapefiles/Makkah_Grid_15_30_Final.shp
   asir_su_key: SU
   asir_grid_key: SU
+  # National Admin boundaries (Country.shp, Provinces.shp). Local workspace path;
+  # Colab: copy under data/shapefile/Admin or set this key to the Drive folder.
+  admin_root: F:/1.KSA/31.WorkingGIS/shapefile/Admin
+  country_boundary: F:/1.KSA/31.WorkingGIS/shapefile/Admin/Country.shp
+  provinces: F:/1.KSA/31.WorkingGIS/shapefile/Admin/Provinces.shp
 
 documents_reference_only:
   gate1_aseer_zero_tree_sus: data/docs/NFI Trees Data - Validation Point 1 (Aseer Region).docx

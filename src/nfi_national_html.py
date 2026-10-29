@@ -347,18 +347,44 @@ def _df_html_table(df: pd.DataFrame, max_rows: int = 25) -> str:
     return view.to_html(index=False, border=0, classes="tbl", na_rep="-", escape=True)
 
 
-def _img_tag(path: Path | str | None, alt: str) -> str:
+def _img_tag(
+    path: Path | str | None,
+    alt: str,
+    *,
+    embed: bool | None = None,
+) -> str:
+    """Link figures relatively from documents/; embed only small EDA PNGs when requested."""
+    import os
+    import base64
+
     if not path:
         return ""
     p = Path(path)
     if not p.exists():
         return f"<p class='note'>Missing figure: {_esc(alt)}</p>"
-    import base64
 
-    b64 = base64.b64encode(p.read_bytes()).decode("ascii")
-    mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
+    # Default: embed only if small (<900 KB); maps stay as relative links
+    if embed is None:
+        embed = p.stat().st_size < 900_000 and ("figures" in p.parts)
+
+    if embed:
+        b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+        mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
+        src = f"data:{mime};base64,{b64}"
+    else:
+        doc_dir = None
+        for parent in p.resolve().parents:
+            if (parent / "documents").is_dir() and (
+                (parent / "maps").is_dir() or (parent / "figures").is_dir()
+            ):
+                doc_dir = parent / "documents"
+                break
+        if doc_dir is not None:
+            src = Path(os.path.relpath(p.resolve(), start=doc_dir)).as_posix()
+        else:
+            src = p.name
     return (
-        f'<figure class="fig"><img alt="{_esc(alt)}" src="data:{mime};base64,{b64}"/>'
+        f'<figure class="fig"><img alt="{_esc(alt)}" src="{_esc(src)}"/>'
         f"<figcaption>{_esc(alt)}</figcaption></figure>"
     )
 
@@ -400,6 +426,7 @@ def write_national_html_report(
     biv_spearman: pd.DataFrame | None = None,
     biv_pearson: pd.DataFrame | None = None,
     ds_pack: dict | None = None,
+    reg_pack: dict | None = None,
 ) -> Path:
     """Professional data-science national report: process, missingness, KDE, themes, maps."""
     out_path = Path(out_path)
@@ -408,6 +435,7 @@ def write_national_html_report(
     map_paths = map_paths or {}
     interactive_paths = interactive_paths or {}
     ds_pack = ds_pack or {}
+    reg_pack = reg_pack or {}
 
     gate = gate or run_summary.get("gate_tree_presence") or {}
     gate_shrub = gate_shrub or run_summary.get("gate_shrub_presence") or {}
@@ -506,7 +534,39 @@ def write_national_html_report(
         ("thematic_hexbin_sum_carbon", "Hexbin surface: tree carbon"),
         ("thematic_hexbin_mean_dbh", "Hexbin surface: mean DBH"),
         ("thematic_hexbin_fire_presence", "Hexbin surface: fire presence"),
+        ("thematic_clipped_sum_carbon", "Country-clipped + satellite: tree carbon"),
+        ("thematic_clipped_mean_dbh", "Country-clipped + satellite: mean DBH"),
+        ("thematic_clipped_fire_presence", "Country-clipped + satellite: fire"),
+        ("thematic_clipped_causative_agent", "Country-clipped + satellite: causative agent"),
+        ("thematic_clipped_tree_presence", "Country-clipped + satellite: tree presence"),
+        ("thematic_regional_n_su", "Regional (Provinces): SU count"),
+        ("thematic_regional_tree_presence_pct", "Regional (Provinces): tree presence %"),
+        ("thematic_regional_sum_tree_carbon_mg", "Regional (Provinces): tree carbon sum"),
+        ("thematic_regional_mean_dbh_cm", "Regional (Provinces): mean DBH"),
+        ("thematic_regional_fire_presence_pct", "Regional (Provinces): fire %"),
+        ("thematic_regional_causative_agent_pct", "Regional (Provinces): causative agent %"),
     ]
+
+    # Regression figure paths from reg_pack
+    for _k, _p in (reg_pack.get("elev_figs") or {}).items():
+        fig_paths[f"reg_elev_{_k}"] = _p
+    for _k, _p in (reg_pack.get("chm_figs") or {}).items():
+        fig_paths[f"reg_chm_{_k}"] = _p
+    elev_metrics = reg_pack.get("elev_metrics")
+    chm_metrics = reg_pack.get("chm_metrics")
+    reg_citations = "".join(f"<li>{_esc(c)}</li>" for c in (reg_pack.get("citations") or []))
+    reg_fig_block = ""
+    for key, title in [
+        ("reg_elev_mean_height_m", "OLS: mean height vs elevation"),
+        ("reg_elev_mean_dbh_cm", "OLS: mean DBH vs elevation"),
+        ("reg_elev_sum_tree_carbon_mg", "OLS: tree carbon vs elevation"),
+        ("reg_elev_sum_tree_agb_mg", "OLS: tree AGB vs elevation"),
+        ("reg_chm_mean_height_m", "OLS: mean height vs Meta CHM"),
+        ("reg_chm_mean_dbh_cm", "OLS: mean DBH vs Meta CHM"),
+        ("reg_chm_sum_tree_carbon_mg", "OLS: tree carbon vs Meta CHM"),
+    ]:
+        if key in fig_paths:
+            reg_fig_block += _img_tag(fig_paths[key], title)
     for key, title in preferred_map_keys:
         if key in map_paths:
             map_block += _img_tag(map_paths[key], title)
@@ -596,6 +656,8 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
     <a href="#univariate">Univariate</a>
     <a href="#bivariate">Bivariate</a>
     <a href="#maps">Cartography</a>
+    <a href="#regional">Regional</a>
+    <a href="#regression">Global regression</a>
     <a href="#interactive">Interactive</a>
     <a href="#assumptions">Assumptions</a>
     <a href="#outputs">Outputs</a>
@@ -705,20 +767,38 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </section>
 
 <section id="maps">
-  <h2>10. Cartography: points, Voronoi / Thiessen, hexbin</h2>
-  <p class="lead">Point symbols show sample locations. Voronoi (Thiessen) polygons are nearest-neighbour influence zones used when an SU area frame is absent (Okabe et al., 2000). Hexbin mosaics summarise local means (Carr et al., 1992). Interactive atlas supports toggling points / polygons / overlay.</p>
+  <h2>10. Cartography: points, Voronoi / Thiessen, hexbin, country clip</h2>
+  <p class="lead">Point symbols show sample locations. Maps are framed with free satellite basemaps (Esri World Imagery / Google Satellite) and clipped or outlined to <code>Country.shp</code> from the Admin shapefile folder. Voronoi (Thiessen) polygons are nearest-neighbour influence zones when an SU area frame is absent (Okabe et al., 2000). Hexbin mosaics summarise local means (Carr et al., 1992).</p>
   {map_block or '<p class="note">No static maps in this run.</p>'}
 </section>
 
+<section id="regional">
+  <h2>11. Regional representation (Provinces.shp)</h2>
+  <p class="lead">Province polygons from Admin/Provinces.shp joined to NFI region labels (alias table maps Aseer→Asir, Al Bahah→Al Baha). KPI choropleths use computed SU thematic aggregates only.</p>
+  {_df_html_table(by_region, max_rows=20)}
+</section>
+
+<section id="regression">
+  <h2>12. Regression vs free global data</h2>
+  <p class="lead">Ordinary least squares of provisional SU metrics against free global predictors. Elevation from the Open-Meteo elevation API (SRTM-based). Optional canopy height from Meta/WRI CHMv2 sampled at a seeded subset of tree-present SU centroids.</p>
+  <h3>Elevation models</h3>
+  {_df_html_table(elev_metrics if isinstance(elev_metrics, pd.DataFrame) else pd.DataFrame(), max_rows=20)}
+  <h3>Meta CHM models</h3>
+  {_df_html_table(chm_metrics if isinstance(chm_metrics, pd.DataFrame) else pd.DataFrame(), max_rows=20)}
+  {reg_fig_block or '<p class="note">Regression figures not produced in this run.</p>'}
+  <h3>Citations</h3>
+  <ul>{reg_citations or '<li>No citations logged.</li>'}</ul>
+</section>
+
 <section id="interactive">
-  <h2>11. Interactive map HTML and atlas</h2>
+  <h2>13. Interactive map HTML and atlas</h2>
   <p class="lead">Open the atlas for Leaflet pan/zoom with dynamic KPIs, region/governorate filters, and cartographic representation modes (points, Voronoi, polygons + points).</p>
   <p>{atlas_btn}</p>
   <p>{imap_btns}</p>
 </section>
 
 <section id="assumptions">
-  <h2>12. Open items and assumptions</h2>
+  <h2>14. Open items and assumptions</h2>
   <h3>Open items</h3>
   <ul>{oi}</ul>
   <h3>Assumptions logged with this run</h3>
@@ -726,7 +806,7 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </section>
 
 <section id="outputs">
-  <h2>13. Outputs to share</h2>
+  <h2>15. Outputs to share</h2>
   <ul>
     <li>This report: <code>documents/NFI_national_geopipeline_report.html</code></li>
     <li>Interactive atlas: <code>maps/html_atlas/index.html</code></li>
@@ -804,12 +884,36 @@ def produce_national_html_products(
         interactive = thematic["interactive"]
         catalog = thematic["catalog"]
         vor_fc = (thematic.get("cartography") or {}).get("voronoi_fc")
+        country_fc = None
+        if thematic.get("country") is not None:
+            try:
+                from nfi_national_boundary import country_geojson
+                country_fc = country_geojson(thematic["country"])
+            except Exception:
+                country_fc = None
         atlas_index = write_national_dashboard_atlas(
-            thematic["su_thematic"], atlas_dir, catalog=catalog, voronoi_fc=vor_fc,
+            thematic["su_thematic"], atlas_dir, catalog=catalog,
+            voronoi_fc=vor_fc, country_fc=country_fc,
         )
         n_vor = len((vor_fc or {}).get("features") or [])
         run_summary["n_voronoi_cells"] = n_vor
+
+        # Free global predictor regressions (elevation + optional CHM subset)
+        try:
+            from nfi_national_global_regression import produce_national_global_regressions
+            reg_pack = produce_national_global_regressions(
+                thematic["su_thematic"], out_root, sample_chm=True, chm_max_points=250,
+            )
+            run_summary["global_regression"] = {
+                "n_elev_models": int(len(reg_pack.get("elev_metrics") or [])),
+                "n_chm_models": int(len(reg_pack.get("chm_metrics") or [])),
+                "citations": reg_pack.get("citations") or [],
+            }
+        except Exception as exc:
+            reg_pack = {"error": str(exc)}
+            run_summary["global_regression_error"] = str(exc)
     else:
+        reg_pack = {}
         # Fallback: legacy four-map set + simple portal
         interactive = write_national_interactive_maps(
             plot, cfg, lattice, su_metrics, out_root / "maps" / "html_interactive"
@@ -850,6 +954,7 @@ def produce_national_html_products(
         biv_spearman=biv_s,
         biv_pearson=biv_p,
         ds_pack=ds_pack,
+        reg_pack=reg_pack,
     )
     manifest = {
         "interactive_maps": interactive,

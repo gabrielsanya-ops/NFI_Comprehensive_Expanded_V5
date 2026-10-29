@@ -250,12 +250,39 @@ def write_voronoi_static_map(
     return out_path
 
 
-def write_cartographic_suite(themes_df: pd.DataFrame, out_root: Path) -> dict[str, Any]:
+def _clip_voronoi_to_country(vor: dict[str, Any], country_gdf) -> dict[str, Any]:
+    """Clip Voronoi cells to Country.shp when available."""
+    try:
+        import geopandas as gpd
+        from shapely.ops import unary_union
+    except Exception:
+        return vor
+    if not vor.get("features"):
+        return vor
+    try:
+        gdf = gpd.GeoDataFrame.from_features(vor, crs="EPSG:4326")
+        country = country_gdf.to_crs(4326)
+        mask = unary_union(country.geometry)
+        gdf["geometry"] = gdf.geometry.intersection(mask)
+        gdf = gdf[~gdf.geometry.is_empty]
+        return gdf.__geo_interface__
+    except Exception:
+        return vor
+
+
+def write_cartographic_suite(
+    themes_df: pd.DataFrame,
+    out_root: Path,
+    *,
+    country_gdf=None,
+) -> dict[str, Any]:
     """Write Voronoi GeoJSON, hex PNGs, and selected Voronoi static maps."""
     out_root = Path(out_root)
     carto = out_root / "maps" / "cartography"
     carto.mkdir(parents=True, exist_ok=True)
     vor = build_voronoi_geojson(themes_df)
+    if country_gdf is not None:
+        vor = _clip_voronoi_to_country(vor, country_gdf)
     vor_path = carto / "su_voronoi_thiessen.geojson"
     import json
     vor_path.write_text(json.dumps(vor), encoding="utf-8")
