@@ -1,6 +1,12 @@
 ﻿# Open in Colab
 
-## National user-guide notebook (preferred)
+## Improved comprehensive notebook (Part A + B + C)
+
+https://colab.research.google.com/github/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5/blob/master/NFI_GeoAI_Comprehensive_Expanded_V5.ipynb
+
+Includes Part C national shortcut (N0 to N5): pipeline, atlas land-cover cartography, open HTML deliverables.
+
+## National user-guide notebook (step-by-step preferred for country-wide runs)
 
 https://colab.research.google.com/github/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5/blob/master/NFI_National_GeoPipeline_Guide_V5.ipynb
 
@@ -9,12 +15,12 @@ https://github.com/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5
 
 Folder layout after bootstrap: see `docs/COLAB_DATA_LAYOUT.md`.
 
-Archive deep-dive gist (Part A/B):
+Archive deep-dive gist (older Part A/B snapshot):
 https://colab.research.google.com/gist/gabrielsanya-ops/c98d2445f50b3781b7ab3e17007df532
 
 Local notebooks:
-- **User guide (start here):** `NFI_National_GeoPipeline_Guide_V5.ipynb`
-- Archive deep-dive: `NFI_GeoAI_Comprehensive_Expanded_V5.ipynb`
+- **Comprehensive (Part A/B/C):** `NFI_GeoAI_Comprehensive_Expanded_V5.ipynb`
+- **National guide:** `NFI_National_GeoPipeline_Guide_V5.ipynb`
 
 ## Run order on Colab (national guide)
 1. Open the Colab link above → Runtime → Connect

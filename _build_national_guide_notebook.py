@@ -655,10 +655,12 @@ for name, path in MAP_PATHS.items():
 **User note:** Builds a **full thematic atlas** from the national tables (not just carbon):
 structure (counts, DBH, height, volume, basal area), biomass/carbon, shrubs, land use, vegetation cover, fire, environmental problems, deadwood, regeneration, tree health, regions, coordinate QA.
 
+**Cartography (land-cover style):** categorical themes use **fixed class colours** shared by map points, legend swatches, and the donut / percent panel. Continuous themes use sequential ramps. Toggle points / Voronoi / overlay; Esri or Google satellite basemap; country outline when Admin `Country.shp` is available.
+
 Outputs:
 - Interactive Leaflet HTML per theme under `maps/html_interactive/`
 - Static PNG companions under `maps/national/thematic/`
-- Atlas portal `maps/html_atlas/index.html` (theme switcher)
+- Atlas portal `maps/html_atlas/index.html` (dashboard theme switcher)
 """))
     c.append(
         code(
@@ -918,8 +920,10 @@ except Exception as e:
 8. Deadwood / litter / regeneration / vegetation cover: counts only until official equations are supplied.
 9. Interactive plot map may sample markers for browser performance (seeded); presence and carbon maps use SU representatives.
 10. Tabular Aseer region count in the SU master differs from the Asir GIS 430-SU analytical grid used in Part A.
+11. Voronoi / hex layers are cartographic representations of point samples when an SU area frame is absent; not design-based area estimates.
+12. Atlas categorical percent panels are class frequencies among filtered SUs, not land-area shares.
 
-See also: `docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md` and `../docs/04_national_pipeline.md`.
+See also: `docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md`, `../docs/04_national_pipeline.md`, `../docs/07_landcover_style_cartography.md`.
 """
         )
     )
@@ -947,24 +951,32 @@ Produces the same CSVs, PNGs, interactive HTML maps, atlas portal, and HTML repo
 | `maps/national/` | Static PNG maps |
 | `maps/html_interactive/` | Leaflet HTML maps (plots, gates, carbon) |
 | `maps/html_atlas/` | Interactive atlas portal (`index.html`) |
+| `maps/cartography/` | Voronoi / hex cartography PNGs + GeoJSON |
 | `documents/` | HTML report + HTML manifest |
 | `logs/` | `national_run_summary.json` receipt |
 | `stages/` | StageStore snapshots |
 
 ## Appendix C · Deeper regional / LULC work
 
-`NFI_GeoAI_Comprehensive_Expanded_V5.ipynb` keeps Part A (Asir GIS depth) and Part B (LULC validation). **This guide notebook is the national-first entry point.**
+`NFI_GeoAI_Comprehensive_Expanded_V5.ipynb` keeps Part A (Asir GIS depth), Part B (LULC validation), and **Part C** (national shortcut with atlas refresh). **This guide notebook is the national-first entry point.**
 
 ## Appendix D · Key source modules
 
 | Module | Role |
 | --- | --- |
-| `src/nfi_national_pipeline.py` | National ingest → gates → biomass → EDA → maps |
-| `src/nfi_national_html.py` | Interactive Leaflet maps, atlas portal, HTML report |
+| `src/nfi_national_pipeline.py` | National ingest to gates to biomass to EDA to maps |
+| `src/nfi_national_html.py` | Interactive Leaflet maps, HTML report wiring |
+| `src/nfi_national_atlas_dashboard.py` | Dashboard atlas (fixed class colours, KPIs, admin filters) |
+| `src/nfi_national_thematic_maps.py` | Thematic catalog + interactive/static themes |
+| `src/nfi_national_cartography.py` | Voronoi / hex scientific cartography |
 | `src/nfi_calc_biomass.py` | Tree and shrub formulas from the calc DOCX |
 | `src/nfi_audit.py` | Keys, StageStore, coordinate QA, config |
 | `src/nfi_datascience.py` | Univariate / bivariate plotting helpers |
 | `config.yaml` | Paths, design constants, policy flags |
+
+## Appendix E · Cartography notes
+
+See `docs/05_national_ds_report_cartography.md`, `docs/06_boundary_regional_global_regression.md`, and `docs/07_landcover_style_cartography.md`.
 """
         )
     )

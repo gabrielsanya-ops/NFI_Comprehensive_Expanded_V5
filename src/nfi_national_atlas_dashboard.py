@@ -318,9 +318,9 @@ aside.panel{background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-r
 .float .hd button{border:0;background:#eef2f0;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px;line-height:1}
 .float .bd{padding:10px 12px;font-size:12px}
 .float.basemap{top:14px;right:14px;width:220px}
-.float.info{top:14px;left:58px;max-width:320px}
-.float.legend{bottom:18px;right:14px;width:210px}
-.float.charts{bottom:18px;left:14px;width:300px}
+.float.info{top:14px;left:58px;max-width:300px}
+.float.legend{top:132px;left:58px;width:230px;max-height:42vh;overflow:auto}
+.float.charts{bottom:18px;left:58px;width:300px;max-height:46vh;overflow:auto}
 .float h3{margin:0 0 4px;font-size:13px}
 .float p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.4}
 .float .row{display:flex;align-items:center;gap:8px;margin:5px 0}
@@ -346,7 +346,8 @@ aside.panel{background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-r
 .kpi .value{font-size:20px;font-weight:800;margin-top:4px;letter-spacing:-.02em}
 .kpi .unit{font-size:11px;color:var(--muted)}
 .kpi .ico{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:14px}
-#chartHist,#chartCat{width:100%!important;max-height:150px}
+#chartHist,#chartCat{width:100%!important;max-height:160px}
+#chartNote .pct-list{margin-top:4px}
 @media (max-width:1100px){
   .workspace{grid-template-columns:280px 1fr}
   .kpi-strip{grid-template-columns:repeat(4,minmax(120px,1fr))}
@@ -379,7 +380,7 @@ aside.panel{background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-r
   <div class="workspace">
     <aside class="panel">
       <h2>Atlas controls</h2>
-      <p class="lead">Theme colours follow cartographic convention (green for living vegetation; brown/amber/red for deadwood, fire and disturbance). Drag legend and charts freely. Use fullscreen for presentation.</p>
+      <p class="lead">Fixed class colours for categorical themes (land-cover style). Continuous themes use sequential ramps. Drag legend and charts; use fullscreen for presentation.</p>
       <div class="filters">
         <div>
           <label for="adminLevel">Admin level</label>
@@ -478,13 +479,14 @@ const ICONS = {
   'Tree health':'❤️', 'Coordinate QA':'📍', Themes:'📊'
 };
 
-/* Semantic cartographic palettes (avoid green for dead / fire / damage) */
+/* Cartographic palettes inspired by land-cover convention:
+   green = living vegetation / agriculture; amber = shrub/range; tan = bare;
+   blue = water; red = built-up / fire; brown = deadwood; purple = disease. */
 const PAL = {
-  vegYes:'#1b7f4e', vegNo:'#cbd5e1',
+  vegYes:'#1b7f4e', vegNo:'#d1d5db',
   deadYes:'#6b4f3a', deadNo:'#e7e5e4',
   fireYes:'#c2410c', fireNo:'#e5e7eb',
-  stumpHi:'#7c2d12', stumpLo:'#fed7aa',
-  diseaseYes:'#7e22ce', diseaseNo:'#e9d5ff',
+  diseaseYes:'#7e22ce', diseaseNo:'#ede9fe',
   envYes:'#b45309', envNo:'#fef3c7',
   biomass:['#f7fcb9','#addd8e','#41ab5d','#006837'],
   structure:['#eff3ff','#bdd7ee','#6baed6','#08519c'],
@@ -492,22 +494,172 @@ const PAL = {
   warn:['#fff7bc','#fec44f','#d95f0e','#7f0000'],
   brown:['#efeee5','#d9c8b4','#a67c52','#5c4033'],
   purple:['#f3e8ff','#d8b4fe','#a855f7','#6b21a8'],
+  canopy:['#e5e7eb','#c7e9c0','#74c476','#31a354','#006d2c','#00441b'],
+  herb:['#e5e7eb','#ffffcc','#c2e699','#78c679','#31a354','#006837'],
 };
+
+/* Fixed class colours (land-cover style) for categorical themes */
+const CLASS_COLORS = {
+  // Land-cover style fixed colours (NFI nat_lucs classes; cartographic convention)
+  land_use: {
+    'Agricultural Land':'#1b5e20',
+    'Forest':'#43a047',
+    'Rangeland':'#f9a825',
+    'Protected Area':'#00897b',
+    'Oasis':'#66bb6a',
+    'Valleys':'#cddc39',
+    'Harrat':'#a1887f',
+    'Sabkha':'#78909c',
+    'Other':'#9e9e9e',
+    'None':'#cbd5e1', 'nan':'#cbd5e1', 'NA':'#cbd5e1',
+  },
+  tree_canopy: {
+    'No trees':'#e5e7eb',
+    '< 5%':'#c7e9c0',
+    '5-10 %':'#74c476',
+    '10-40%':'#31a354',
+    '40-70%':'#006d2c',
+    '> 70%':'#00441b',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  herbaceous: {
+    'No herbaceous':'#e5e7eb',
+    '1-5 %':'#ffffd4',
+    '6-10 %':'#fee391',
+    '11-40%':'#fec44f',
+    '41-70%':'#fe9929',
+    '> 70%':'#cc4c02',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  tree_condition: {
+    'Healthy':'#2e7d32',
+    'Slightly affected':'#f9a825',
+    'Severely affected':'#ef6c00',
+    'Dead/Dying tree':'#5d4037',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  crown_condition: {
+    'Healthy':'#2e7d32',
+    'Declining health':'#f9a825',
+    'Dying':'#ef6c00',
+    'Dead':'#5d4037',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  fire_type: {
+    'No evidence of fire':'#e5e7eb',
+    'Surface fire':'#e65100',
+    'Ground fire':'#bf360c',
+    'Crown fire':'#b71c1c',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  causative_agent: {
+    'Not applicable':'#e5e7eb',
+    'Climate':'#0277bd',
+    'Insects':'#6a1b9a',
+    'Animals':'#ad1457',
+    'Humans':'#c62828',
+    'Dieback':'#4e342e',
+    'Disease/Fungi':'#7b1fa2',
+    'Other':'#78909c',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  env_category: {
+    'No Environmental Problem':'#c8e6c9',
+    'Erosion':'#ef6c00',
+    'Overgrazing':'#f9a825',
+    'Deforestation':'#5d4037',
+    'Invasive species':'#8e24aa',
+    'Other':'#90a4ae',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  coord_confidence: {
+    'high':'#2e7d32',
+    'medium':'#f9a825',
+    'low':'#c62828',
+    'None':'#cbd5e1', 'nan':'#cbd5e1',
+  },
+  region: {
+    'Aseer':'#7c3aed', 'Asir':'#7c3aed',
+    'Al Bahah':'#1d4ed8', 'Al Baha':'#1d4ed8',
+    'Ar Riyad':'#16a34a',
+    'Makkah Al Mukarramah':'#a16207',
+    'Eastern Region':'#0891b2',
+    'Jazan':'#db2777',
+    'Najran':'#06b6d4',
+    'Tabuk':'#ea580c',
+    'Hail':'#4f46e5',
+    'Northern Borders':'#64748b',
+    'Al Jawf':'#0f766e',
+    'Al Qaseem':'#ca8a04',
+    'Al Madinah Al Munawwarah':'#be123c',
+  },
+};
+
+function classColorMap(theme){
+  const id = theme?.id || '';
+  if(id==='land_use') return CLASS_COLORS.land_use;
+  if(id==='tree_canopy') return CLASS_COLORS.tree_canopy;
+  if(id==='herbaceous') return CLASS_COLORS.herbaceous;
+  if(id==='tree_condition') return CLASS_COLORS.tree_condition;
+  if(id==='crown_condition') return CLASS_COLORS.crown_condition;
+  if(id==='fire_type') return CLASS_COLORS.fire_type;
+  if(id==='causative_agent') return CLASS_COLORS.causative_agent;
+  if(id==='env_category') return CLASS_COLORS.env_category;
+  if(id==='coord_confidence') return CLASS_COLORS.coord_confidence;
+  if(id==='region') return CLASS_COLORS.region;
+  return null;
+}
+
+function orderedClassEntries(theme, counts){
+  // Prefer fixed class order from CLASS_COLORS (land-cover style legend), then any extras by count
+  const map = classColorMap(theme);
+  const byLab = Object.fromEntries(counts);
+  const out = [];
+  const seen = new Set();
+  if(map){
+    Object.keys(map).forEach(k => {
+      if(k==='nan' || k==='NA') return;
+      if(byLab[k] != null){ out.push([k, byLab[k]]); seen.add(k); }
+    });
+  }
+  counts.forEach(([k,n]) => { if(!seen.has(k)) out.push([k,n]); });
+  return out;
+}
+
+function colorForClass(theme, raw){
+  const key = (raw===null || raw===undefined || raw==='' || String(raw).toLowerCase()==='nan') ? 'nan' : String(raw);
+  const map = classColorMap(theme);
+  if(map && map[key]) return map[key];
+  // fuzzy match (case / spacing)
+  if(map){
+    const hit = Object.keys(map).find(k => k.toLowerCase() === key.toLowerCase());
+    if(hit) return map[hit];
+  }
+  // stable hash fallback (colourblind-safe-ish set; no green for damage themes)
+  let hash = 0;
+  for(let i=0;i<key.length;i++) hash = ((hash<<5)-hash)+key.charCodeAt(i);
+  const fallback = ['#0072B2','#E69F00','#D55E00','#CC79A7','#56B4E9','#882255','#44AA99','#999999','#F0E442'];
+  return fallback[Math.abs(hash) % fallback.length];
+}
 
 function paletteFor(theme){
   const id = theme?.id || '';
   const cat = theme?.category || '';
-  if(id==='deadwood_presence' || cat==='Deadwood and regen') return {type:'binary', yes:PAL.deadYes, no:PAL.deadNo, ramp:PAL.brown, labelYes:'Deadwood present', labelNo:'No deadwood'};
-  if(id==='fire_presence' || id==='fire_type') return {type:'binary', yes:PAL.fireYes, no:PAL.fireNo, ramp:PAL.warn, labelYes:'Fire evidence', labelNo:'No fire'};
-  if(id==='stump_share') return {type:'cont', ramp:PAL.brown, label:'Stump share'};
-  if(id==='has_causative_agent' || id==='causative_agent' || id==='crown_condition' || id==='tree_condition')
-    return {type:'binary', yes:PAL.diseaseYes, no:PAL.diseaseNo, ramp:PAL.purple, labelYes:'Recorded / affected', labelNo:'Not recorded'};
-  if(id==='env_problem' || id==='env_category') return {type:'binary', yes:PAL.envYes, no:PAL.envNo, ramp:PAL.warn, labelYes:'Env. problem', labelNo:'None'};
-  if(id==='tree_presence' || id==='shrub_presence' || cat==='Gates') return {type:'binary', yes:PAL.vegYes, no:PAL.vegNo, ramp:PAL.biomass, labelYes:'Present', labelNo:'Absent'};
-  if(cat==='Biomass and carbon' || cat==='Shrubs') return {type:'cont', ramp:PAL.carbon};
-  if(cat==='Structure' || cat==='Biodiversity') return {type:'cont', ramp:PAL.structure};
-  if(cat==='Disturbance' || cat==='Tree health') return {type:'cont', ramp:PAL.warn};
-  return {type:'cont', ramp:PAL.structure};
+  if(id==='deadwood_presence') return {type:'binary', yes:PAL.deadYes, no:PAL.deadNo, ramp:PAL.brown, labelYes:'Deadwood present', labelNo:'No deadwood', legendTitle:'Deadwood'};
+  if(id==='fire_presence') return {type:'binary', yes:PAL.fireYes, no:PAL.fireNo, ramp:PAL.warn, labelYes:'Fire evidence', labelNo:'No fire', legendTitle:'Fire'};
+  if(id==='has_causative_agent') return {type:'binary', yes:PAL.diseaseYes, no:PAL.diseaseNo, ramp:PAL.purple, labelYes:'Agent recorded', labelNo:'Not recorded', legendTitle:'Causative agent'};
+  if(id==='env_problem') return {type:'binary', yes:PAL.envYes, no:PAL.envNo, ramp:PAL.warn, labelYes:'Env. problem', labelNo:'None', legendTitle:'Environmental problem'};
+  if(id==='tree_presence' || id==='shrub_presence') return {type:'binary', yes:PAL.vegYes, no:PAL.vegNo, ramp:PAL.biomass, labelYes:'Present', labelNo:'Absent', legendTitle: theme.title};
+  if(id==='stump_share') return {type:'cont', ramp:PAL.brown, legendTitle:'Stump share'};
+  if(id==='land_use' || id==='tree_canopy' || id==='herbaceous' || id==='tree_condition' || id==='crown_condition' || id==='fire_type' || id==='causative_agent' || id==='env_category' || id==='region' || id==='coord_confidence')
+    return {type:'categorical', legendTitle: theme.title.replace(/ \(SU\).*/,'').replace(/^Modal /,'') + ' classes'};
+  if(cat==='Biomass and carbon' || cat==='Shrubs') return {type:'cont', ramp:PAL.carbon, legendTitle: theme.title};
+  if(cat==='Structure' || cat==='Biodiversity') return {type:'cont', ramp:PAL.structure, legendTitle: theme.title};
+  if(cat==='Vegetation cover') return {type:'cont', ramp:PAL.canopy, legendTitle: theme.title};
+  if(cat==='Disturbance' || cat==='Tree health') return {type:'cont', ramp:PAL.warn, legendTitle: theme.title};
+  if(theme.kind==='categorical') return {type:'categorical', legendTitle: theme.title};
+  if(theme.kind==='binary') return {type:'binary', yes:PAL.vegYes, no:PAL.vegNo, labelYes:'Yes', labelNo:'No', legendTitle: theme.title};
+  return {type:'cont', ramp:PAL.structure, legendTitle: theme.title};
 }
 
 function rampColor(ramp, t){
@@ -683,12 +835,7 @@ function colorFor(theme, props){
     return yes ? pal.yes : pal.no;
   }
   if(kind === 'categorical'){
-    const raw = String(props[col] ?? 'NA');
-    let hash = 0;
-    for(let i=0;i<raw.length;i++) hash = ((hash<<5)-hash)+raw.charCodeAt(i);
-    // categorical: use theme ramp ends + fixed distinct colours (no pure vegetation green for damage themes)
-    const base = (pal.ramp && pal.ramp.length) ? pal.ramp : ['#0072B2','#E69F00','#D55E00','#CC79A7','#56B4E9','#882255','#44AA99'];
-    return base[Math.abs(hash) % base.length];
+    return colorForClass(theme, props[col]);
   }
   if(kind === 'continuous'){
     const v = Number(props[col]);
@@ -697,6 +844,24 @@ function colorFor(theme, props){
     return rampColor(pal.ramp || PAL.structure, t);
   }
   return '#475569';
+}
+
+function classCounts(theme, feats){
+  const col = theme.value_col;
+  const counts = {};
+  feats.forEach(f => {
+    let v = f.properties[col];
+    if(theme.kind==='binary'){
+      const pal = paletteFor(theme);
+      const yes = v===true || v==='True' || v===1;
+      v = yes ? (pal.labelYes||'Yes') : (pal.labelNo||'No');
+    } else {
+      if(v===null || v===undefined || v==='' || String(v).toLowerCase()==='nan') v = 'No data';
+      else v = String(v);
+    }
+    counts[v] = (counts[v]||0) + 1;
+  });
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]);
 }
 
 function radiusFor(theme, props){
@@ -715,13 +880,16 @@ function radiusFor(theme, props){
   return 2.6;
 }
 
-function renderLegend(theme){
+function renderLegend(theme, feats){
   const el = document.getElementById('legend');
   const pal = paletteFor(theme);
-  let html = `<div style="font-weight:700;margin-bottom:6px">${theme.title}</div>`;
+  const title = pal.legendTitle || theme.title;
+  const hd = document.querySelector('#legendPanel .hd span');
+  if(hd) hd.textContent = (theme.kind === 'categorical') ? 'Classes' : 'Legend';
+  let html = `<div style="font-weight:700;margin-bottom:8px">${title}</div>`;
   if(theme.kind === 'binary'){
-    html += `<div><span class="sw" style="background:${pal.yes}"></span>${pal.labelYes||'Yes / present'}</div>
-             <div><span class="sw" style="background:${pal.no}"></span>${pal.labelNo||'No / absent'}</div>`;
+    html += `<div style="margin:3px 0"><span class="sw" style="background:${pal.yes}"></span>${pal.labelYes||'Yes / present'}</div>
+             <div style="margin:3px 0"><span class="sw" style="background:${pal.no}"></span>${pal.labelNo||'No / absent'}</div>`;
   } else if(theme.kind === 'continuous'){
     const ramp = pal.ramp || PAL.structure;
     html += `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;margin:6px 0">
@@ -734,9 +902,21 @@ function renderLegend(theme){
       </div>
       <div style="margin-top:6px;font-size:10px;color:#64748b">Marker size scales with value</div>`;
   } else {
-    html += `<div style="font-size:11px;color:#64748b">Categorical classes (theme palette)</div>
-      <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
-      ${(pal.ramp||[]).map(c=>`<span class="sw sq" style="background:${c}"></span>`).join('')}</div>`;
+    // Land-cover style class legend: fixed colour order + counts in view
+    const raw = classCounts(theme, feats || []);
+    const entries = orderedClassEntries(theme, raw).slice(0, 14);
+    if(!entries.length){
+      html += `<div style="font-size:11px;color:#64748b">No classes in current filter</div>`;
+    } else {
+      entries.forEach(([lab, n]) => {
+        const c = colorForClass(theme, lab==='No data'?'nan':lab);
+        html += `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px">
+          <span class="sw" style="background:${c};flex:0 0 auto"></span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${lab}">${lab}</span>
+        </div>`;
+      });
+      html += `<div style="margin-top:8px;font-size:10px;color:#64748b">Points: colour = class; size may vary with value</div>`;
+    }
   }
   el.innerHTML = html;
 }
@@ -777,32 +957,45 @@ function renderCharts(theme, feats){
     note.textContent = `Histogram of ${col} (n=${vals.length}). Mean=${fmt(vals.reduce((a,b)=>a+b,0)/vals.length,2)}.`;
   } else {
     histEl.style.display='none'; catEl.style.display='block';
-    const counts = {};
-    feats.forEach(f => {
-      let v = f.properties[col];
+    const raw = classCounts(theme, feats);
+    // Stats by frequency (land-cover mockup); map colours stay fixed per class
+    const byCount = [...raw].sort((a,b)=>b[1]-a[1]).slice(0, 10);
+    const total = byCount.reduce((a,e)=>a+e[1], 0) || 1;
+    const colors = byCount.map(([lab]) => {
       if(theme.kind==='binary'){
-        const yes = v===true || v==='True' || v===1;
-        v = yes ? (pal.labelYes||'Yes') : (pal.labelNo||'No');
-      } else {
-        v = (v===null||v===undefined||v==='') ? 'NA' : String(v);
+        return lab===(pal.labelYes||'Yes') ? pal.yes : pal.no;
       }
-      counts[v] = (counts[v]||0)+1;
+      return colorForClass(theme, lab==='No data'?'nan':lab);
     });
-    const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    const colors = entries.map((_,i)=> (pal.ramp||PAL.structure)[i % (pal.ramp||PAL.structure).length]);
-    // binary: force semantic colours
-    if(theme.kind==='binary' && entries.length){
-      entries.forEach((e,i)=>{
-        if(e[0]===(pal.labelYes||'Yes')) colors[i]=pal.yes;
-        if(e[0]===(pal.labelNo||'No')) colors[i]=pal.no;
-      });
-    }
     STATE.chartCat = new Chart(catEl, {
       type:'doughnut',
-      data:{labels:entries.map(e=>e[0].slice(0,28)), datasets:[{data:entries.map(e=>e[1]), backgroundColor:colors, borderWidth:1}]},
-      options:{plugins:{legend:{position:'bottom', labels:{boxWidth:10, font:{size:9}}}}, maintainAspectRatio:false}
+      data:{labels:byCount.map(e=>e[0].slice(0,28)), datasets:[{data:byCount.map(e=>e[1]), backgroundColor:colors, borderWidth:1, borderColor:'#fff'}]},
+      options:{
+        cutout:'58%',
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:(ctx)=>{
+            const n = ctx.parsed; const pct = 100*n/total;
+            return ` ${ctx.label}: ${n} (${pct.toFixed(1)}%)`;
+          }}}
+        },
+        maintainAspectRatio:false
+      }
     });
-    note.textContent = `Class frequencies for ${col} (top ${entries.length}).`;
+    // Land-cover style percent list (by frequency)
+    const list = byCount.map(([lab,n], i) => {
+      const pctNum = 100*n/total;
+      const pct = pctNum < 1 ? '<1' : pctNum.toFixed(0);
+      const c = colors[i];
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+        <span class="sw" style="background:${c};width:10px;height:10px"></span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${lab}">${lab}</span>
+        <b>${pct}%</b></div>`;
+    }).join('');
+    note.innerHTML = `<div class="pct-list" style="display:flex;gap:10px;align-items:flex-start">
+      <div style="flex:0 0 auto;text-align:center;font-size:11px;color:#64748b;padding-top:4px"><b style="display:block;font-size:15px;color:#0f172a">${fmt(total,0)}</b>SU</div>
+      <div style="flex:1;min-width:0">${list}</div>
+    </div>`;
   }
 }
 
@@ -863,7 +1056,7 @@ function redrawLayer(){
   document.getElementById('themeTitle').textContent = theme.title;
   document.getElementById('themeBlurb').textContent =
     (theme.blurb || '') + ` · Representation: ${modeLabel} · size varies with value`;
-  renderLegend(theme);
+  renderLegend(theme, pts);
   renderCharts(theme, pts);
   renderKpis();
 }
