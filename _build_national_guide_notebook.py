@@ -663,6 +663,7 @@ Outputs:
     c.append(
         code(
             r"""from nfi_national_thematic_maps import produce_national_thematic_maps
+from nfi_national_atlas_dashboard import write_national_dashboard_atlas
 
 THEMATIC = produce_national_thematic_maps(
     tables=TABLES,
@@ -674,8 +675,8 @@ THEMATIC = produce_national_thematic_maps(
     out_root=OUT,
 )
 INTERACTIVE = THEMATIC["interactive"]
-ATLAS_INDEX = write_national_html_atlas(
-    INTERACTIVE, OUT / "maps" / "html_atlas", catalog=THEMATIC["catalog"]
+ATLAS_INDEX = write_national_dashboard_atlas(
+    THEMATIC["su_thematic"], OUT / "maps" / "html_atlas", catalog=THEMATIC["catalog"]
 )
 HTML_PRODUCTS["interactive_maps"] = INTERACTIVE
 HTML_PRODUCTS["static_thematic_maps"] = THEMATIC["static"]

@@ -97,9 +97,12 @@ def build_national_su_thematic_table(
     """One row per SU with coordinates and thematic attributes (computed only)."""
     su = tables["su"].copy()
     region_col = cfg["columns"]["region_en"]
+    gov_col = cfg["columns"].get("governorate_en", "su_group_gover_e")
     base = su[["SU_UID"]].drop_duplicates().copy()
     if region_col in su.columns:
         base["region"] = su.groupby("SU_UID")[region_col].agg(_mode_or_na).reindex(base["SU_UID"]).values
+    if gov_col in su.columns:
+        base["governorate"] = su.groupby("SU_UID")[gov_col].agg(_mode_or_na).reindex(base["SU_UID"]).values
 
     xy = _su_xy(plot, cfg)
     out = base.merge(xy, on="SU_UID", how="left")

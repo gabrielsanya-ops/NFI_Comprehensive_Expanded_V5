@@ -681,8 +681,9 @@ def produce_national_html_products(
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     from nfi_national_thematic_maps import produce_national_thematic_maps
+    from nfi_national_atlas_dashboard import write_national_dashboard_atlas
 
-    thematic = {"interactive": {}, "static": {}, "catalog": pd.DataFrame()}
+    thematic = {"interactive": {}, "static": {}, "catalog": pd.DataFrame(), "su_thematic": pd.DataFrame()}
     if tables is not None and tree_m is not None and shrub_m is not None:
         thematic = produce_national_thematic_maps(
             tables=tables,
@@ -695,14 +696,16 @@ def produce_national_html_products(
         )
         interactive = thematic["interactive"]
         catalog = thematic["catalog"]
+        atlas_index = write_national_dashboard_atlas(
+            thematic["su_thematic"], atlas_dir, catalog=catalog
+        )
     else:
-        # Fallback: legacy four-map set
+        # Fallback: legacy four-map set + simple portal
         interactive = write_national_interactive_maps(
             plot, cfg, lattice, su_metrics, out_root / "maps" / "html_interactive"
         )
         catalog = None
-
-    atlas_index = write_national_html_atlas(interactive, atlas_dir, catalog=catalog)
+        atlas_index = write_national_html_atlas(interactive, atlas_dir, catalog=catalog)
 
     def _read_csv(path: Path) -> pd.DataFrame | None:
         return pd.read_csv(path) if path.exists() else None
