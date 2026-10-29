@@ -44,7 +44,9 @@ NATIONAL_THEMES: list[tuple] = [
     ("fire_presence", "Fire evidence present (SU)", "has_fire", "binary", "Disturbance", "Any fire_evidence record on the SU."),
     ("fire_type", "Modal fire type (SU)", "fire_type_mode", "categorical", "Disturbance", "Modal fir_type_label where recorded."),
     ("env_problem", "Environmental problem present (SU)", "has_env_problem", "binary", "Disturbance", "Any environmental_problems record."),
-    ("env_category", "Modal env. problem category (SU)", "env_category_mode", "categorical", "Disturbance", "Modal categories_label."),
+    ("env_category", "Modal env. problem category (SU)", "env_category_mode", "categorical", "Disturbance", "Modal categories_label (includes pest and disease where coded)."),
+    ("causative_agent", "Modal causative agent (SU)", "causative_agent_mode", "categorical", "Tree health", "Modal causative_agent_label[1] among trees on the SU (disease / damage agent)."),
+    ("has_causative_agent", "Causative agent recorded (SU)", "has_causative_agent", "binary", "Tree health", "Any non-null causative_agent_label[1] on trees of the SU."),
     ("deadwood_presence", "Deadwood present (SU)", "has_deadwood", "binary", "Deadwood and regen", "Any deadwood record."),
     ("regen_count", "Regeneration count (SU)", "regen_count_sum", "continuous", "Deadwood and regen", "Sum of regeneration count field."),
     ("tree_condition", "Modal overall tree condition (SU)", "tree_condition_mode", "categorical", "Tree health", "Modal overall_tree_condition_label."),
@@ -149,6 +151,25 @@ def build_national_su_thematic_table(
                 on="SU_UID",
                 how="left",
             )
+        agent_col = "causative_agent_label[1]"
+        if agent_col in trees.columns:
+            out = out.merge(
+                g[agent_col].agg(_mode_or_na).rename("causative_agent_mode").reset_index(),
+                on="SU_UID",
+                how="left",
+            )
+            agent_s = trees[agent_col].astype(str).str.strip()
+            agent_present = (
+                trees.assign(
+                    _agent_ok=~agent_s.str.lower().isin(["", "nan", "none", "<na>", "null"])
+                    & trees[agent_col].notna()
+                )
+                .groupby("SU_UID")["_agent_ok"]
+                .any()
+                .rename("has_causative_agent")
+                .reset_index()
+            )
+            out = out.merge(agent_present, on="SU_UID", how="left")
         if "tree_or_stump_label" in trees.columns:
             stump = trees.assign(
                 _stump=trees["tree_or_stump_label"].astype(str).str.lower().str.contains("stump", na=False)
@@ -229,6 +250,7 @@ def build_national_su_thematic_table(
     if dead is not None and len(dead):
         out = out.merge(dead.groupby("SU_UID").size().gt(0).rename("has_deadwood").reset_index(), on="SU_UID", how="left")
     out["has_deadwood"] = out.get("has_deadwood", False).fillna(False)
+    out["has_causative_agent"] = out.get("has_causative_agent", False).fillna(False)
 
     regen = tables.get("regeneration")
     if regen is not None and len(regen):
@@ -516,9 +538,21 @@ def produce_national_thematic_maps(
     catalog["png_written"] = catalog["theme_id"].map(lambda t: t in static)
     catalog.to_csv(out_root / "maps" / "national_thematic_catalog.csv", index=False)
 
+    carto: dict[str, Any] = {}
+    try:
+        from nfi_national_cartography import write_cartographic_suite
+        carto = write_cartographic_suite(themes_df, out_root)
+        for k, p in (carto.get("hexbin_png") or {}).items():
+            static[f"hexbin_{k}"] = p
+        for k, p in (carto.get("voronoi_png") or {}).items():
+            static[f"voronoi_{k}"] = p
+    except Exception as exc:
+        carto = {"error": str(exc)}
+
     return {
         "su_thematic": themes_df,
         "interactive": interactive,
         "static": static,
         "catalog": catalog,
+        "cartography": carto,
     }

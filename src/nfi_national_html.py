@@ -363,6 +363,24 @@ def _img_tag(path: Path | str | None, alt: str) -> str:
     )
 
 
+def _ds_img_block(ds_pack: dict | None, key: str, alt: str) -> str:
+    if not ds_pack:
+        return ""
+    path = ds_pack.get(key)
+    return _img_tag(path, alt) if path else ""
+
+
+def _ds_path_dict_block(path_dict: dict | None, title_prefix: str, limit: int = 12) -> str:
+    if not path_dict:
+        return ""
+    parts = []
+    for i, (name, path) in enumerate(path_dict.items()):
+        if i >= limit:
+            break
+        parts.append(_img_tag(path, f"{title_prefix}: {name}"))
+    return "".join(parts)
+
+
 def write_national_html_report(
     *,
     out_path: Path,
@@ -381,13 +399,15 @@ def write_national_html_report(
     uni_shrubs: pd.DataFrame | None = None,
     biv_spearman: pd.DataFrame | None = None,
     biv_pearson: pd.DataFrame | None = None,
+    ds_pack: dict | None = None,
 ) -> Path:
-    """LULC-style national methodology + results HTML report (self-contained where possible)."""
+    """Professional data-science national report: process, missingness, KDE, themes, maps."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig_paths = fig_paths or {}
     map_paths = map_paths or {}
     interactive_paths = interactive_paths or {}
+    ds_pack = ds_pack or {}
 
     gate = gate or run_summary.get("gate_tree_presence") or {}
     gate_shrub = gate_shrub or run_summary.get("gate_shrub_presence") or {}
@@ -404,6 +424,8 @@ def write_national_html_report(
         ("GIS Area_H attached", run_summary.get("gis_area_attached_sus")),
         ("Area blocked", run_summary.get("gis_area_blocked_sus")),
         ("Design-based", "No" if not run_summary.get("design_based_estimates") else "Yes"),
+        ("Interactive themes", run_summary.get("n_interactive_themes")),
+        ("Voronoi cells", run_summary.get("n_voronoi_cells")),
     ]
     kpi_html = "".join(
         f'<div class="kpi"><div class="k">{_esc(k)}</div><div class="v">{_esc(v)}</div></div>'
@@ -412,7 +434,7 @@ def write_national_html_report(
 
     imap_btns = "".join(
         f'<a class="btn soft" href="../maps/html_interactive/{_esc(Path(p).name)}" target="_blank">{_esc(name)}</a>'
-        for name, p in interactive_paths.items()
+        for name, p in list(interactive_paths.items())[:24]
     )
     atlas_btn = (
         '<a class="btn" href="../maps/html_atlas/index.html" target="_blank">Open interactive map atlas</a>'
@@ -429,34 +451,65 @@ def write_national_html_report(
         if key in fig_paths:
             fig_block += _img_tag(fig_paths[key], title)
 
+    flow_fig = _ds_img_block(ds_pack, "flowchart", "Data processing and feature-engineering flowchart")
+    miss_figs = (
+        _ds_img_block(ds_pack, "missingness_trees", "Missingness profile: national trees")
+        + _ds_img_block(ds_pack, "missingness_shrubs", "Missingness profile: national shrubs")
+    )
+    kde_block = (
+        _ds_path_dict_block(ds_pack.get("kde_raw"), "KDE suite (raw field)", 6)
+        + _ds_path_dict_block(ds_pack.get("kde_trees_fv"), "KDE suite (tree FV)", 8)
+        + _ds_path_dict_block(ds_pack.get("kde_shrubs"), "KDE suite (shrubs)", 6)
+    )
+    theme_bars = _ds_path_dict_block(ds_pack.get("theme_bars"), "Thematic frequency", 12)
+    agent_tbl = ds_pack.get("agent_tbl")
+    fire_tbl = ds_pack.get("fire_tbl")
+    env_tbl = ds_pack.get("env_tbl")
+    miss_top = ds_pack.get("miss_trees")
+    if isinstance(miss_top, pd.DataFrame) and len(miss_top):
+        miss_top = miss_top.head(15)
+    else:
+        miss_top = pd.DataFrame()
+
     map_block = ""
-    # Prefer a curated subset so the report stays readable; full set lives in the atlas
     preferred_map_keys = [
         ("map_national_plots", "National plots (static)"),
         ("map_national_su_mean_tree_carbon", "SU mean provisional tree carbon (static)"),
-        ("thematic_tree_count", "Thematic: tree count"),
-        ("thematic_species_richness", "Thematic: species richness"),
-        ("thematic_mean_dbh", "Thematic: mean DBH"),
-        ("thematic_sum_agb", "Thematic: tree AGB"),
-        ("thematic_sum_carbon", "Thematic: tree carbon"),
-        ("thematic_land_use", "Thematic: modal land use"),
-        ("thematic_tree_canopy", "Thematic: tree canopy"),
-        ("thematic_fire_presence", "Thematic: fire evidence"),
-        ("thematic_deadwood_presence", "Thematic: deadwood"),
-        ("thematic_regen_count", "Thematic: regeneration"),
-        ("thematic_tree_condition", "Thematic: tree condition"),
-        ("thematic_region", "Thematic: region"),
+        ("thematic_tree_count", "Thematic (points): tree count"),
+        ("thematic_species_richness", "Thematic (points): species richness"),
+        ("thematic_mean_dbh", "Thematic (points): mean DBH"),
+        ("thematic_sum_agb", "Thematic (points): tree AGB"),
+        ("thematic_sum_carbon", "Thematic (points): tree carbon"),
+        ("thematic_land_use", "Thematic (points): modal land use"),
+        ("thematic_tree_canopy", "Thematic (points): tree canopy"),
+        ("thematic_fire_presence", "Thematic (points): fire evidence"),
+        ("thematic_fire_type", "Thematic (points): fire type"),
+        ("thematic_env_problem", "Thematic (points): env. problem present"),
+        ("thematic_env_category", "Thematic (points): env. category"),
+        ("thematic_causative_agent", "Thematic (points): modal causative agent"),
+        ("thematic_has_causative_agent", "Thematic (points): causative agent recorded"),
+        ("thematic_deadwood_presence", "Thematic (points): deadwood"),
+        ("thematic_regen_count", "Thematic (points): regeneration"),
+        ("thematic_tree_condition", "Thematic (points): tree condition"),
+        ("thematic_crown_condition", "Thematic (points): crown condition"),
+        ("thematic_region", "Thematic (points): region"),
+        ("thematic_voronoi_sum_carbon", "Voronoi choropleth: tree carbon"),
+        ("thematic_voronoi_mean_dbh", "Voronoi choropleth: mean DBH"),
+        ("thematic_voronoi_fire_presence", "Voronoi choropleth: fire evidence"),
+        ("thematic_voronoi_causative_agent", "Voronoi choropleth: causative agent"),
+        ("thematic_hexbin_sum_carbon", "Hexbin surface: tree carbon"),
+        ("thematic_hexbin_mean_dbh", "Hexbin surface: mean DBH"),
+        ("thematic_hexbin_fire_presence", "Hexbin surface: fire presence"),
     ]
     for key, title in preferred_map_keys:
         if key in map_paths:
             map_block += _img_tag(map_paths[key], title)
-    # Any remaining thematic_* not already shown
     shown = {k for k, _ in preferred_map_keys}
     extra = 0
     for key, path in map_paths.items():
         if key in shown or not str(key).startswith("thematic_"):
             continue
-        if extra >= 8:
+        if extra >= 10:
             break
         map_block += _img_tag(path, key.replace("thematic_", "Thematic: ").replace("_", " "))
         extra += 1
@@ -466,6 +519,7 @@ def write_national_html_report(
         ("Design weights", "Design-based national totals remain blocked."),
         ("Shrub log base", "Natural log assumed (not stated in calc DOCX)."),
         ("Ancillary biomass", "Deadwood/litter/regen/veg have no calc-doc biomass equations."),
+        ("Voronoi / hex", "Influence polygons and hex aggregates are cartographic representations; points are the sample frame."),
     ]
     oi = "".join(f"<li><b>{_esc(a)}</b>: {_esc(b)}</li>" for a, b in open_items)
     assump = "".join(f"<li>{_esc(a)}</li>" for a in assumptions)
@@ -475,7 +529,7 @@ def write_national_html_report(
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>KSA NFI National Geopipeline Report</title>
+<title>KSA NFI National Data Science Report</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Literata:opsz,wght@7..72,500;7..72,700&display=swap');
 :root {{
@@ -501,6 +555,7 @@ header p {{ margin:12px 0 0; color:rgba(255,255,255,.92); max-width:72rem; }}
 main {{ padding:28px clamp(16px,4vw,40px) 64px; max-width:1100px; margin:0 auto; }}
 section {{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin:0 0 22px; box-shadow:var(--shadow); }}
 h2 {{ font-family:Literata,Georgia,serif; color:var(--forest); margin:0 0 8px; font-size:1.25rem; }}
+h3 {{ color:#245c38; margin:16px 0 8px; font-size:1.05rem; }}
 .lead {{ color:var(--muted); margin:0 0 12px; font-size:.95rem; }}
 .kpis {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }}
 .kpi {{ border:1px solid var(--line); border-top:4px solid var(--forest); border-radius:10px; padding:10px 12px; background:#fff; }}
@@ -522,47 +577,60 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </head>
 <body>
 <header>
-  <p class="kicker">Kingdom of Saudi Arabia · National Forest Inventory</p>
-  <h1>National geopipeline: process, methodology and results</h1>
-  <p>Entire-country tabular universe (all regions in the cleansed SU master). Biomass and carbon are provisional sample metrics from the official Trees and Shrubs calculation document. Design-based national totals remain blocked without full Area_H and design weights. Style aligned with the LULC validation report.</p>
+  <p class="kicker">Kingdom of Saudi Arabia · National Forest Inventory · Data science report</p>
+  <h1>National geopipeline: data processing, EDA and thematic results</h1>
+  <p>Entire-country tabular universe. Structure follows a professional data-science reporting arc: ingest and engineering, missing-data handling, distributional EDA (KDE suites), thematic disturbance and health results (fire, causative agents, environmental problems), then cartographic products (points, Voronoi / Thiessen, hexbin).</p>
   <nav class="toc" aria-label="Jump to section">
-    <a href="#workflow">Workflow</a>
-    <a href="#numbers">Key numbers</a>
+    <a href="#executive">Executive</a>
+    <a href="#workflow">Process</a>
+    <a href="#missingness">Missing data</a>
     <a href="#methodology">Methodology</a>
+    <a href="#kde">KDE / distributions</a>
+    <a href="#thematic-results">Fire · disease · env</a>
     <a href="#univariate">Univariate</a>
     <a href="#bivariate">Bivariate</a>
-    <a href="#maps">Maps</a>
-    <a href="#interactive">Interactive HTML</a>
+    <a href="#maps">Cartography</a>
+    <a href="#interactive">Interactive</a>
     <a href="#assumptions">Assumptions</a>
     <a href="#outputs">Outputs</a>
   </nav>
 </header>
 <main>
 
-<section id="workflow">
-  <h2>Methodological workflow</h2>
-  <p class="lead">Anti-clip national frame: every SU keeps five plot slots even when trees or shrubs are absent.</p>
-  <div class="flow">
-    <div>1. Ingest national cleansed tables and attach SU_UID / PLOT_UID keys</div>
-    <div>2. Build SU × 5 anti-clip plot lattice for the full SU master</div>
-    <div>3. Presence gates (trees and shrubs) without deleting zero cells</div>
-    <div>4. Optional Area_H join from Asir and Makkah grids only</div>
-    <div>5. Tree biomass chain (calc DOCX): BA → volume → AGB → BGB → carbon → CO2eq</div>
-    <div>6. Shrub biomass chain (calc DOCX): mean CD, height cm → allometric AGB → BGB → carbon</div>
-    <div>7. Ancillary pools inventoried as counts (no invented biomass equations)</div>
-    <div>8. Univariate and bivariate EDA on provisional metrics</div>
-    <div>9. Static maps + interactive Leaflet HTML atlas + this report</div>
-  </div>
-</section>
-
-<section id="numbers">
-  <h2>Key numbers at a glance</h2>
-  <p class="lead">Values below are taken from the computed run summary for this package run.</p>
+<section id="executive">
+  <h2>1. Executive summary (computed KPIs)</h2>
+  <p class="lead">Values below are taken from the computed run summary for this package run. No invented figures.</p>
   <div class="kpis">{kpi_html}</div>
 </section>
 
+<section id="workflow">
+  <h2>2. Data processing and feature engineering</h2>
+  <p class="lead">Anti-clip national frame: every SU keeps five plot slots even when trees or shrubs are absent. Feature engineering follows the official Trees and Shrubs calculation document only.</p>
+  {flow_fig}
+  <div class="flow">
+    <div>1. Ingest national cleansed tables and attach SU_UID / PLOT_UID keys</div>
+    <div>2. Coordinate QA (field vs database) and validated lon/lat</div>
+    <div>3. Build SU × 5 anti-clip plot lattice for the full SU master</div>
+    <div>4. Presence gates (trees and shrubs) without deleting zero cells</div>
+    <div>5. Optional Area_H join from Asir and Makkah grids only</div>
+    <div>6. Exclude grass / Calotropis / palm (trees) and grass (shrubs)</div>
+    <div>7. Engineer BA, volume, AGB, BGB, carbon, CO2eq (trees) and shrub allometrics</div>
+    <div>8. Missingness audit + KDE / distribution suites</div>
+    <div>9. Thematic SU attributes: fire, env problems, causative agents, condition</div>
+    <div>10. Point maps + Voronoi / Thiessen + hexbin cartography + HTML atlas</div>
+  </div>
+</section>
+
+<section id="missingness">
+  <h2>3. Missing-data handling</h2>
+  <p class="lead">Missingness is profiled before modelling. Zero-tree and zero-shrub SUs are retained (anti-clip). Biomass metrics are computed only where required inputs are present; design-based expansion remains blocked without Area_H and weights.</p>
+  <h3>Top incomplete columns (national trees)</h3>
+  {_df_html_table(miss_top, max_rows=15)}
+  {miss_figs or '<p class="note">Missingness figures not produced in this run.</p>'}
+</section>
+
 <section id="methodology">
-  <h2>Methodology (official formulas)</h2>
+  <h2>4. Methodology (official formulas)</h2>
   <p class="lead">Source: <code>data/docs/NFI_ KSA Calculation_Trees&amp;shrubs.docx</code> and extract <code>data/docs/_calc_doc_extract.md</code>.</p>
   <h3>Trees</h3>
   <ul>
@@ -585,7 +653,7 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </section>
 
 <section id="regions">
-  <h2>Sampling units by region</h2>
+  <h2>5. Sampling frame by region</h2>
   {_df_html_table(by_region, max_rows=20)}
   <h3>GIS Area_H coverage</h3>
   {_df_html_table(area_cov if area_cov is not None else pd.DataFrame(), max_rows=10)}
@@ -593,18 +661,36 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
   {_df_html_table(ancillary, max_rows=20)}
 </section>
 
+<section id="kde">
+  <h2>6. Distributional EDA (histogram + KDE, box, violin, strip)</h2>
+  <p class="lead">Fancy distribution suites for raw field metrics and engineered provisional FV metrics. Each panel embeds histogram with kernel density estimate, boxplot, violin, and strip/bubble view.</p>
+  {kde_block or fig_block or '<p class="note">KDE suites not produced in this run.</p>'}
+</section>
+
+<section id="thematic-results">
+  <h2>7. Thematic results: fire, causative agents, environmental problems</h2>
+  <p class="lead">Frequencies computed from national cleansed tables. Causative agents are disease / damage agents recorded on trees (<code>causative_agent_label[1]</code>). Fire comes from <code>fire_evidence</code>. Environmental problem categories include pest and disease where coded in <code>categories_label</code>.</p>
+  <h3>Causative agent frequency (trees)</h3>
+  {_df_html_table(agent_tbl if isinstance(agent_tbl, pd.DataFrame) else pd.DataFrame(), max_rows=20)}
+  <h3>Fire evidence frequency</h3>
+  {_df_html_table(fire_tbl if isinstance(fire_tbl, pd.DataFrame) else pd.DataFrame(), max_rows=20)}
+  <h3>Environmental problem categories</h3>
+  {_df_html_table(env_tbl if isinstance(env_tbl, pd.DataFrame) else pd.DataFrame(), max_rows=20)}
+  {theme_bars or '<p class="note">Thematic bar charts not produced in this run.</p>'}
+</section>
+
 <section id="univariate">
-  <h2>Univariate analysis</h2>
-  <p class="lead">National provisional tree and shrub metrics. Figures are embedded from this run.</p>
-  <h3>Tree provisional metrics (table)</h3>
+  <h2>8. Univariate summary tables</h2>
+  <p class="lead">National provisional tree and shrub metrics (computed).</p>
+  <h3>Tree provisional metrics</h3>
   {_df_html_table(uni_trees if uni_trees is not None else pd.DataFrame(), max_rows=20)}
-  <h3>Shrub provisional metrics (table)</h3>
+  <h3>Shrub provisional metrics</h3>
   {_df_html_table(uni_shrubs if uni_shrubs is not None else pd.DataFrame(), max_rows=20)}
   {fig_block}
 </section>
 
 <section id="bivariate">
-  <h2>Bivariate analysis</h2>
+  <h2>9. Bivariate analysis</h2>
   <p class="lead">Pairwise correlations on provisional tree FV metrics (Spearman and Pearson).</p>
   <h3>Spearman</h3>
   {_df_html_table(biv_spearman if biv_spearman is not None else pd.DataFrame(), max_rows=30)}
@@ -613,19 +699,20 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </section>
 
 <section id="maps">
-  <h2>Static map products</h2>
+  <h2>10. Cartography: points, Voronoi / Thiessen, hexbin</h2>
+  <p class="lead">Point symbols show sample locations. Voronoi (Thiessen) polygons are nearest-neighbour influence zones used when an SU area frame is absent (Okabe et al., 2000). Hexbin mosaics summarise local means (Carr et al., 1992). Interactive atlas supports toggling points / polygons / overlay.</p>
   {map_block or '<p class="note">No static maps in this run.</p>'}
 </section>
 
 <section id="interactive">
-  <h2>Interactive map HTML and atlas</h2>
-  <p class="lead">Open the atlas portal for pan/zoom Leaflet maps on imagery basemaps (plots, tree presence, provisional carbon).</p>
+  <h2>11. Interactive map HTML and atlas</h2>
+  <p class="lead">Open the atlas for Leaflet pan/zoom with dynamic KPIs, region/governorate filters, and cartographic representation modes (points, Voronoi, polygons + points).</p>
   <p>{atlas_btn}</p>
   <p>{imap_btns}</p>
 </section>
 
 <section id="assumptions">
-  <h2>Open items and assumptions</h2>
+  <h2>12. Open items and assumptions</h2>
   <h3>Open items</h3>
   <ul>{oi}</ul>
   <h3>Assumptions logged with this run</h3>
@@ -633,10 +720,12 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </section>
 
 <section id="outputs">
-  <h2>Outputs to share</h2>
+  <h2>13. Outputs to share</h2>
   <ul>
     <li>This report: <code>documents/NFI_national_geopipeline_report.html</code></li>
     <li>Interactive atlas: <code>maps/html_atlas/index.html</code></li>
+    <li>DS figures: <code>figures/national_ds/</code></li>
+    <li>Cartography: <code>maps/cartography/</code> (Voronoi GeoJSON, hexbin PNGs)</li>
     <li>Interactive maps: <code>maps/html_interactive/</code></li>
     <li>Run receipt: <code>logs/national_run_summary.json</code></li>
     <li>CLI twin: <code>python run_national_pipeline.py</code></li>
@@ -647,7 +736,7 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 </section>
 
 </main>
-<footer>KSA NFI national geopipeline report · provisional sample metrics · generated from computed run objects only</footer>
+<footer>KSA NFI national data-science report · provisional sample metrics · generated from computed run objects only</footer>
 </body>
 </html>
 """
@@ -682,9 +771,21 @@ def produce_national_html_products(
 
     from nfi_national_thematic_maps import produce_national_thematic_maps
     from nfi_national_atlas_dashboard import write_national_dashboard_atlas
+    from nfi_national_ds_report import produce_national_ds_figures
 
-    thematic = {"interactive": {}, "static": {}, "catalog": pd.DataFrame(), "su_thematic": pd.DataFrame()}
+    thematic = {
+        "interactive": {}, "static": {}, "catalog": pd.DataFrame(),
+        "su_thematic": pd.DataFrame(), "cartography": {},
+    }
+    ds_pack: dict = {}
     if tables is not None and tree_m is not None and shrub_m is not None:
+        ds_pack = produce_national_ds_figures(
+            tables=tables,
+            tree_m=tree_m,
+            shrub_m=shrub_m,
+            out_root=out_root,
+            cfg=cfg,
+        )
         thematic = produce_national_thematic_maps(
             tables=tables,
             tree_m=tree_m,
@@ -696,9 +797,12 @@ def produce_national_html_products(
         )
         interactive = thematic["interactive"]
         catalog = thematic["catalog"]
+        vor_fc = (thematic.get("cartography") or {}).get("voronoi_fc")
         atlas_index = write_national_dashboard_atlas(
-            thematic["su_thematic"], atlas_dir, catalog=catalog
+            thematic["su_thematic"], atlas_dir, catalog=catalog, voronoi_fc=vor_fc,
         )
+        n_vor = len((vor_fc or {}).get("features") or [])
+        run_summary["n_voronoi_cells"] = n_vor
     else:
         # Fallback: legacy four-map set + simple portal
         interactive = write_national_interactive_maps(
@@ -712,8 +816,8 @@ def produce_national_html_products(
 
     audit = out_root / "audit"
     eda = out_root / "figures" / "national_eda"
-    uni_trees = _read_csv(audit / "univariate_national_trees_fv.csv")
-    uni_shrubs = _read_csv(audit / "univariate_national_shrubs_fv.csv")
+    uni_trees = ds_pack.get("uni_trees") if ds_pack.get("uni_trees") is not None else _read_csv(audit / "univariate_national_trees_fv.csv")
+    uni_shrubs = ds_pack.get("uni_shrubs") if ds_pack.get("uni_shrubs") is not None else _read_csv(audit / "univariate_national_shrubs_fv.csv")
     biv_s = _read_csv(eda / "bivariate_spearman_trees_national.csv")
     biv_p = _read_csv(eda / "bivariate_pearson_trees_national.csv")
 
@@ -739,12 +843,15 @@ def produce_national_html_products(
         uni_shrubs=uni_shrubs,
         biv_spearman=biv_s,
         biv_pearson=biv_p,
+        ds_pack=ds_pack,
     )
     manifest = {
         "interactive_maps": interactive,
         "static_thematic_maps": thematic.get("static") or {},
         "n_interactive_themes": len(interactive),
         "n_static_themes": len(thematic.get("static") or {}),
+        "n_voronoi_cells": run_summary.get("n_voronoi_cells"),
+        "ds_figures": str(out_root / "figures" / "national_ds"),
         "atlas_index": str(atlas_index),
         "html_report": str(report),
         "thematic_catalog": str(out_root / "maps" / "national_thematic_catalog.csv"),

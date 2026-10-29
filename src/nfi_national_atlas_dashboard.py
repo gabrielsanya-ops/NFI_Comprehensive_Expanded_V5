@@ -81,6 +81,7 @@ def _agg_block(df: pd.DataFrame) -> dict[str, Any]:
         "fire_presence_pct": pct_true("has_fire"),
         "deadwood_presence_pct": pct_true("has_deadwood"),
         "env_problem_pct": pct_true("has_env_problem"),
+        "causative_agent_pct": pct_true("has_causative_agent"),
         "mean_dbh_cm": mean_num("mean_dbh_cm"),
         "mean_height_m": mean_num("mean_height_m"),
         "mean_n_trees": mean_num("n_trees"),
@@ -117,9 +118,24 @@ def _admin_table(df: pd.DataFrame, col: str) -> list[dict]:
     return rows
 
 
+def _slim_voronoi_fc(vor_fc: dict[str, Any], keep_cols: list[str]) -> dict[str, Any]:
+    """Keep only theming properties on Voronoi features to limit HTML size."""
+    keep = set(keep_cols) | {"SU_UID", "region", "governorate"}
+    feats = []
+    for f in vor_fc.get("features") or []:
+        props = f.get("properties") or {}
+        feats.append({
+            "type": "Feature",
+            "geometry": f.get("geometry"),
+            "properties": {k: _json_safe(props.get(k)) for k in keep if k in props},
+        })
+    return {"type": "FeatureCollection", "features": feats}
+
+
 def build_atlas_payload(
     themes_df: pd.DataFrame,
     catalog: pd.DataFrame | None = None,
+    voronoi_fc: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     theme_meta = _theme_value_meta()
     themes = []
@@ -150,20 +166,32 @@ def build_atlas_payload(
             "properties": props,
         })
 
+    value_cols = [t.get("value_col") for t in themes if t.get("value_col")]
+    vor_slim = None
+    if voronoi_fc and voronoi_fc.get("features"):
+        vor_slim = _slim_voronoi_fc(voronoi_fc, [c for c in value_cols if c])
+
     return {
         "meta": {
             "title": "KSA NFI National Atlas",
             "subtitle": "Forest and rangeland biomass and carbon monitoring (provisional sample metrics)",
             "n_su_total": int(len(themes_df)),
             "n_features_mapped": len(features),
+            "n_voronoi_cells": len((vor_slim or {}).get("features") or []),
             "admin_levels": ["national", "region", "governorate"],
-            "note": "Governorate is the province-level field from the SU master (su_group_gover_e).",
+            "geometry_modes": ["points", "voronoi", "points_on_voronoi"],
+            "note": (
+                "Governorate is the province-level field from the SU master (su_group_gover_e). "
+                "Voronoi / Thiessen polygons are nearest-neighbour influence zones for cartographic "
+                "representation when an SU area frame is absent; points remain the sample locations."
+            ),
         },
         "themes": themes,
         "national_kpis": _agg_block(themes_df),
         "by_region": _admin_table(themes_df, "region"),
         "by_governorate": _admin_table(themes_df, "governorate"),
         "geojson": {"type": "FeatureCollection", "features": features},
+        "voronoi": vor_slim or {"type": "FeatureCollection", "features": []},
     }
 
 
@@ -171,11 +199,18 @@ def write_national_dashboard_atlas(
     themes_df: pd.DataFrame,
     out_dir: Path,
     catalog: pd.DataFrame | None = None,
+    voronoi_fc: dict[str, Any] | None = None,
 ) -> Path:
     """Write dashboard atlas: index.html (+ embedded data) and atlas_data.json."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    payload = build_atlas_payload(themes_df, catalog=catalog)
+    if voronoi_fc is None:
+        try:
+            from nfi_national_cartography import build_voronoi_geojson
+            voronoi_fc = build_voronoi_geojson(themes_df)
+        except Exception:
+            voronoi_fc = {"type": "FeatureCollection", "features": []}
+    payload = build_atlas_payload(themes_df, catalog=catalog, voronoi_fc=voronoi_fc)
     data_path = out_dir / "atlas_data.json"
     raw = json.dumps(payload, ensure_ascii=False)
     data_path.write_text(raw, encoding="utf-8")
@@ -327,6 +362,14 @@ aside.panel{
           <label for="searchBox">Search SU / place text</label>
           <input id="searchBox" placeholder="Search country, city or SU..."/>
         </div>
+        <div>
+          <label for="geomMode">Cartographic representation</label>
+          <select id="geomMode">
+            <option value="points">Point symbols (sample locations)</option>
+            <option value="voronoi">Voronoi / Thiessen polygons</option>
+            <option value="points_on_voronoi">Polygons + points overlay</option>
+          </select>
+        </div>
       </div>
       <div id="themeList"></div>
     </aside>
@@ -358,7 +401,9 @@ const STATE = {
   themeId: null,
   adminLevel: 'national',
   adminName: '',
+  geomMode: 'points',
   layer: null,
+  layerPts: null,
   search: '',
 };
 
@@ -436,6 +481,7 @@ function kpiSource(){
     fire_presence_pct: pct('has_fire'),
     deadwood_presence_pct: pct('has_deadwood'),
     env_problem_pct: pct('has_env_problem'),
+    causative_agent_pct: pct('has_causative_agent'),
     mean_dbh_cm: mean('mean_dbh_cm'),
     mean_height_m: mean('mean_height_m'),
     mean_n_trees: mean('n_trees'),
@@ -486,12 +532,12 @@ function cardsForTheme(theme, k){
       {label:'Mean height', value:fmt(k.mean_height_m,1), unit:'m trees', ico:'📐', bg:'#f3e5f5'},
       {label:'Regen sum', value:fmt(k.sum_regen,0), unit:'count field sum', ico:'🌱', bg:'#e8f5e9'},
     );
-  } else if(theme?.category==='Disturbance'){
+  } else if(theme?.category==='Disturbance' || theme?.category==='Tree health' || ['fire_presence','fire_type','env_problem','env_category','causative_agent','has_causative_agent','tree_condition','crown_condition'].includes(id)){
     extra.push(
       {label:'Fire present', value:fmt(k.fire_presence_pct,1)+'%', unit:'SUs with fire evidence', ico:'🔥', bg:'#ffebee'},
       {label:'Env. problem', value:fmt(k.env_problem_pct,1)+'%', unit:'SUs with env. records', ico:'⚠️', bg:'#fff3e0'},
+      {label:'Agent recorded', value:fmt(k.causative_agent_pct,1)+'%', unit:'SUs with causative agent', ico:'🦠', bg:'#fce4ec'},
       {label:'Deadwood', value:fmt(k.deadwood_presence_pct,1)+'%', unit:'SUs with deadwood', ico:'🪵', bg:'#efebe9'},
-      {label:'AGB (prov.)', value:fmt(k.sum_tree_agb_mg,1), unit:'Mg sum', ico:'🌳', bg:'#e8f5e9'},
       {label:'Stump share', value:fmt((k.mean_stump_share||0)*100,1)+'%', unit:'mean of SU shares', ico:'🪓', bg:'#fff8e1'},
     );
   } else if(theme?.category==='Deadwood and regen'){
@@ -585,31 +631,75 @@ function renderLegend(theme){
   }
 }
 
+function filteredVoronoi(){
+  const feats = (STATE.data.voronoi && STATE.data.voronoi.features) || [];
+  const level = STATE.adminLevel;
+  const name = STATE.adminName;
+  const q = (STATE.search || '').trim().toLowerCase();
+  return feats.filter(f => {
+    const p = f.properties || {};
+    if(level === 'region' && name && String(p.region||'') !== name) return false;
+    if(level === 'governorate' && name && String(p.governorate||'') !== name) return false;
+    if(q){
+      const blob = [p.SU_UID, p.region, p.governorate].join(' ').toLowerCase();
+      if(!blob.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function bindPopup(theme, feat, layer){
+  const p = feat.properties || {};
+  const val = theme.value_col ? p[theme.value_col] : '';
+  layer.bindPopup(
+    `<b>SU ${p.SU_UID??''}</b><br/>Region: ${p.region??'-'}<br/>Governorate: ${p.governorate??'-'}<br/>`+
+    `${theme.title}: <b>${val===null||val===undefined?'-':val}</b>`
+  );
+}
+
 function redrawLayer(){
   const theme = themeById(STATE.themeId);
   if(!theme) return;
-  const feats = filteredFeatures();
-  updateVmax(theme, feats);
-  if(STATE.layer){ MAP.removeLayer(STATE.layer); }
-  STATE.layer = L.geoJSON({type:'FeatureCollection', features:feats}, {
-    pointToLayer: (feat, latlng) => {
-      const c = colorFor(theme, feat.properties||{});
-      return L.circleMarker(latlng, {
-        radius: theme.kind==='continuous' ? 4 : 4.5,
-        color: c, fillColor: c, fillOpacity: 0.78, weight: 0.6
-      });
-    },
-    onEachFeature: (feat, layer) => {
-      const p = feat.properties || {};
-      const val = theme.value_col ? p[theme.value_col] : '';
-      layer.bindPopup(
-        `<b>SU ${p.SU_UID??''}</b><br/>Region: ${p.region??'-'}<br/>Governorate: ${p.governorate??'-'}<br/>`+
-        `${theme.title}: <b>${val===null||val===undefined?'-':val}</b>`
-      );
+  const pts = filteredFeatures();
+  const vor = filteredVoronoi();
+  updateVmax(theme, pts.length ? pts : vor);
+  if(STATE.layer){ MAP.removeLayer(STATE.layer); STATE.layer = null; }
+  if(STATE.layerPts){ MAP.removeLayer(STATE.layerPts); STATE.layerPts = null; }
+
+  const mode = STATE.geomMode || 'points';
+  const stylePoly = (feat) => {
+    const c = colorFor(theme, feat.properties||{});
+    return {color:'#ffffff', weight:0.4, fillColor:c, fillOpacity:0.72};
+  };
+  const pointLayer = (feat, latlng) => {
+    const c = colorFor(theme, feat.properties||{});
+    return L.circleMarker(latlng, {
+      radius: theme.kind==='continuous' ? 4 : 4.5,
+      color: c, fillColor: c, fillOpacity: 0.85, weight: 0.6
+    });
+  };
+
+  if(mode === 'voronoi' || mode === 'points_on_voronoi'){
+    if(vor.length){
+      STATE.layer = L.geoJSON({type:'FeatureCollection', features:vor}, {
+        style: stylePoly,
+        onEachFeature: (feat, layer) => bindPopup(theme, feat, layer),
+      }).addTo(MAP);
     }
-  }).addTo(MAP);
+  }
+  if(mode === 'points' || mode === 'points_on_voronoi'){
+    const target = (mode === 'points') ? 'layer' : 'layerPts';
+    STATE[target] = L.geoJSON({type:'FeatureCollection', features:pts}, {
+      pointToLayer: pointLayer,
+      onEachFeature: (feat, layer) => bindPopup(theme, feat, layer),
+    }).addTo(MAP);
+  }
+
+  const modeLabel = mode === 'voronoi' ? 'Voronoi / Thiessen'
+    : (mode === 'points_on_voronoi' ? 'Polygons + points' : 'Points');
   document.getElementById('themeTitle').textContent = theme.title;
-  document.getElementById('themeBlurb').textContent = theme.blurb || '';
+  document.getElementById('themeBlurb').textContent =
+    (theme.blurb || '') + ` · Representation: ${modeLabel}`;
   renderLegend(theme);
   renderKpis();
 }
@@ -693,6 +783,10 @@ document.getElementById('adminName').addEventListener('change', (e) => {
 });
 document.getElementById('searchBox').addEventListener('input', (e) => {
   STATE.search = e.target.value;
+  redrawLayer();
+});
+document.getElementById('geomMode').addEventListener('change', (e) => {
+  STATE.geomMode = e.target.value;
   redrawLayer();
 });
 
