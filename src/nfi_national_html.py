@@ -331,7 +331,25 @@ def _df_html_table(df: pd.DataFrame, max_rows: int = 25) -> str:
     if df is None or len(df) == 0:
         return "<p><em>No rows.</em></p>"
     view = df.head(max_rows).copy()
-    return view.to_html(index=False, border=0, classes="tbl", na_rep="-")
+    for c in view.select_dtypes(include=[np.number]).columns:
+        view[c] = view[c].map(lambda x: f"{x:.4g}" if pd.notna(x) else "-")
+    return view.to_html(index=False, border=0, classes="tbl", na_rep="-", escape=True)
+
+
+def _img_tag(path: Path | str | None, alt: str) -> str:
+    if not path:
+        return ""
+    p = Path(path)
+    if not p.exists():
+        return f"<p class='note'>Missing figure: {_esc(alt)}</p>"
+    import base64
+
+    b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+    mime = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
+    return (
+        f'<figure class="fig"><img alt="{_esc(alt)}" src="data:{mime};base64,{b64}"/>'
+        f"<figcaption>{_esc(alt)}</figcaption></figure>"
+    )
 
 
 def write_national_html_report(
@@ -348,50 +366,65 @@ def write_national_html_report(
     interactive_paths: dict | None = None,
     atlas_index: Path | str | None = None,
     assumptions: list[str] | None = None,
+    uni_trees: pd.DataFrame | None = None,
+    uni_shrubs: pd.DataFrame | None = None,
+    biv_spearman: pd.DataFrame | None = None,
+    biv_pearson: pd.DataFrame | None = None,
 ) -> Path:
-    """Self-contained national HTML report with KPI cards, tables, and map links."""
+    """LULC-style national methodology + results HTML report (self-contained where possible)."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    headline = [
-        ("SUs (national)", run_summary.get("n_su")),
-        ("Regions", run_summary.get("n_regions")),
-        ("Plot lattice", run_summary.get("lattice_rows")),
-        ("Tree biomass rows", run_summary.get("n_tree_biomass_rows")),
-        ("Shrub biomass rows", run_summary.get("n_shrub_biomass_rows")),
-        ("GIS Area_H attached", run_summary.get("gis_area_attached_sus")),
-        ("Area blocked", run_summary.get("gis_area_blocked_sus")),
-        ("Design-based", "No" if not run_summary.get("design_based_estimates") else "Yes"),
-    ]
-    cards = "".join(
-        f'<div class="card"><div class="k">{_esc(k)}</div><div class="v">{_esc(v)}</div></div>'
-        for k, v in headline
-    )
+    fig_paths = fig_paths or {}
+    map_paths = map_paths or {}
+    interactive_paths = interactive_paths or {}
 
     gate = gate or run_summary.get("gate_tree_presence") or {}
     gate_shrub = gate_shrub or run_summary.get("gate_shrub_presence") or {}
     assumptions = assumptions or run_summary.get("assumptions") or []
 
-    fig_list = ""
-    for name, p in (fig_paths or {}).items():
-        pp = Path(p)
-        fig_list += f"<li><b>{_esc(name)}</b>: {_esc(pp.name)}</li>"
+    kpis = [
+        ("SUs (national)", run_summary.get("n_su")),
+        ("Regions", run_summary.get("n_regions")),
+        ("Plot lattice", run_summary.get("lattice_rows")),
+        ("Tree biomass rows", run_summary.get("n_tree_biomass_rows")),
+        ("Shrub biomass rows", run_summary.get("n_shrub_biomass_rows")),
+        ("SUs with trees", gate.get("sus_with_trees")),
+        ("SUs with shrubs", gate_shrub.get("sus_with_shrubs")),
+        ("GIS Area_H attached", run_summary.get("gis_area_attached_sus")),
+        ("Area blocked", run_summary.get("gis_area_blocked_sus")),
+        ("Design-based", "No" if not run_summary.get("design_based_estimates") else "Yes"),
+    ]
+    kpi_html = "".join(
+        f'<div class="kpi"><div class="k">{_esc(k)}</div><div class="v">{_esc(v)}</div></div>'
+        for k, v in kpis
+    )
 
-    static_maps = ""
-    for name, p in (map_paths or {}).items():
-        static_maps += f"<li><b>{_esc(name)}</b>: {_esc(Path(p).name)}</li>"
+    imap_btns = "".join(
+        f'<a class="btn soft" href="../maps/html_interactive/{_esc(Path(p).name)}" target="_blank">{_esc(name)}</a>'
+        for name, p in interactive_paths.items()
+    )
+    atlas_btn = (
+        '<a class="btn" href="../maps/html_atlas/index.html" target="_blank">Open interactive map atlas</a>'
+        if atlas_index else ""
+    )
 
-    imap_links = ""
-    for name, p in (interactive_paths or {}).items():
-        rel = Path(p).name
-        imap_links += f'<li><a href="../maps/html_interactive/{_esc(rel)}" target="_blank">{_esc(name)}</a></li>'
+    fig_block = ""
+    for key, title in [
+        ("univariate_trees_national", "Univariate: tree DBH and height (raw field)"),
+        ("univariate_trees_fv_national", "Univariate: tree provisional FV metrics"),
+        ("bivariate_corr_trees_national", "Bivariate: tree Spearman vs Pearson correlations"),
+        ("univariate_shrubs_national", "Univariate: shrub provisional metrics"),
+    ]:
+        if key in fig_paths:
+            fig_block += _img_tag(fig_paths[key], title)
 
-    atlas_link = ""
-    if atlas_index:
-        atlas_link = (
-            f'<p><a class="btn" href="../maps/html_atlas/index.html" target="_blank">'
-            f"Open interactive atlas portal</a></p>"
-        )
+    map_block = ""
+    for key, title in [
+        ("map_national_plots", "National plots (static)"),
+        ("map_national_su_mean_tree_carbon", "SU mean provisional tree carbon (static)"),
+    ]:
+        if key in map_paths:
+            map_block += _img_tag(map_paths[key], title)
 
     open_items = [
         ("National Area_H", "Only Asir and Makkah grids attach Area_H in this workspace."),
@@ -402,72 +435,184 @@ def write_national_html_report(
     oi = "".join(f"<li><b>{_esc(a)}</b>: {_esc(b)}</li>" for a, b in open_items)
     assump = "".join(f"<li>{_esc(a)}</li>" for a in assumptions)
 
-    doc = f"""<!doctype html>
+    doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>KSA NFI National Geopipeline Report</title>
 <style>
-body{{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#171717;
-max-width:980px;margin:32px auto;padding:0 20px;line-height:1.55}}
-h1{{font-size:26px;margin:0 0 4px}}
-h2{{font-size:17px;border-bottom:2px solid #d4d4d4;padding-bottom:4px;margin-top:28px}}
-.sub{{color:#525252;font-size:13px;margin-bottom:18px}}
-.cards{{display:flex;flex-wrap:wrap;gap:10px}}
-.card{{flex:1 1 140px;border:1px solid #d4d4d4;border-top:4px solid #404040;border-radius:8px;padding:10px 12px}}
-.k{{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#525252}}
-.v{{font-size:22px;font-weight:800}}
-.tbl{{border-collapse:collapse;width:100%;font-size:13px}}
-.tbl th,.tbl td{{border:1px solid #e5e5e5;padding:6px 8px;text-align:left}}
-.tbl th{{background:#f5f5f5}}
-.btn{{display:inline-block;padding:10px 14px;background:#1b2838;color:#fff;text-decoration:none;border-radius:6px}}
-.note{{background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:10px 12px;font-size:13px}}
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Literata:opsz,wght@7..72,500;7..72,700&display=swap');
+:root {{
+  --ink:#1a2420; --muted:#4a5a52; --line:#d5ddd7; --paper:#f7f9f6; --card:#fff;
+  --forest:#1b5e20; --soft:#e8f0e9; --shadow:0 8px 28px rgba(26,36,32,.07);
+}}
+* {{ box-sizing:border-box; }}
+html {{ scroll-behavior:smooth; }}
+body {{
+  margin:0; color:var(--ink); font-family:"IBM Plex Sans","Segoe UI",sans-serif; line-height:1.55;
+  background: radial-gradient(1200px 500px at 10% -10%, #e6efe7 0%, transparent 55%),
+              radial-gradient(900px 420px at 100% 0%, #f3ebe3 0%, transparent 45%), var(--paper);
+}}
+header {{
+  background: linear-gradient(135deg, #14351c 0%, #1b5e20 48%, #245c38 100%);
+  color:#f4faf5; padding:34px clamp(16px,4vw,40px) 28px; box-shadow:var(--shadow);
+}}
+header h1 {{ font-family:Literata,Georgia,serif; margin:0; font-size:clamp(1.4rem,2.2vw,2rem); color:#fff; }}
+header p {{ margin:12px 0 0; color:rgba(255,255,255,.92); max-width:72rem; }}
+.kicker {{ font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:#b7d4bc; font-weight:600; margin:0 0 10px; }}
+.toc {{ display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }}
+.toc a {{ color:#14351c; background:rgba(255,255,255,.92); text-decoration:none; font-size:.78rem; font-weight:600; padding:6px 10px; border-radius:999px; }}
+main {{ padding:28px clamp(16px,4vw,40px) 64px; max-width:1100px; margin:0 auto; }}
+section {{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin:0 0 22px; box-shadow:var(--shadow); }}
+h2 {{ font-family:Literata,Georgia,serif; color:var(--forest); margin:0 0 8px; font-size:1.25rem; }}
+.lead {{ color:var(--muted); margin:0 0 12px; font-size:.95rem; }}
+.kpis {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }}
+.kpi {{ border:1px solid var(--line); border-top:4px solid var(--forest); border-radius:10px; padding:10px 12px; background:#fff; }}
+.kpi .k {{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }}
+.kpi .v {{ font-size:1.35rem; font-weight:800; margin-top:4px; }}
+.tbl {{ border-collapse:collapse; width:100%; font-size:13px; }}
+.tbl th,.tbl td {{ border:1px solid #e5e5e5; padding:6px 8px; text-align:left; }}
+.tbl th {{ background:var(--soft); }}
+.fig {{ margin:14px 0; }}
+.fig img {{ width:100%; height:auto; border:1px solid var(--line); border-radius:10px; display:block; }}
+.figcaption {{ font-size:12px; color:var(--muted); margin-top:6px; }}
+.btn {{ display:inline-block; margin:4px 6px 4px 0; padding:10px 14px; background:#14351c; color:#fff; text-decoration:none; border-radius:8px; font-weight:600; font-size:.9rem; }}
+.btn.soft {{ background:#fff; color:#14351c; border:1px solid var(--line); }}
+.note {{ background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13px; }}
+.flow {{ display:grid; gap:8px; }}
+.flow div {{ background:#fff; border-left:4px solid var(--forest); border:1px solid var(--line); border-left-width:4px; border-radius:8px; padding:8px 12px; font-size:.92rem; }}
+footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:center; }}
 </style>
 </head>
 <body>
-<h1>KSA NFI National Geopipeline Report</h1>
-<div class="sub">Entire-country tabular universe. Generated from computed run summary only.
-Carbon and biomass figures are provisional sample metrics unless stated otherwise.</div>
-<div class="cards">{cards}</div>
+<header>
+  <p class="kicker">Kingdom of Saudi Arabia · National Forest Inventory</p>
+  <h1>National geopipeline: process, methodology and results</h1>
+  <p>Entire-country tabular universe (all regions in the cleansed SU master). Biomass and carbon are provisional sample metrics from the official Trees and Shrubs calculation document. Design-based national totals remain blocked without full Area_H and design weights. Style aligned with the LULC validation report.</p>
+  <nav class="toc" aria-label="Jump to section">
+    <a href="#workflow">Workflow</a>
+    <a href="#numbers">Key numbers</a>
+    <a href="#methodology">Methodology</a>
+    <a href="#univariate">Univariate</a>
+    <a href="#bivariate">Bivariate</a>
+    <a href="#maps">Maps</a>
+    <a href="#interactive">Interactive HTML</a>
+    <a href="#assumptions">Assumptions</a>
+    <a href="#outputs">Outputs</a>
+  </nav>
+</header>
+<main>
 
-<h2>Presence gates</h2>
-<ul>
-<li>Trees: { _esc(gate.get('sus_with_trees')) } SUs with trees / { _esc(gate.get('sus_no_trees')) } zero-tree
-  (of { _esc(gate.get('total_sus')) })</li>
-<li>Shrubs: { _esc(gate_shrub.get('sus_with_shrubs')) } SUs with shrubs / { _esc(gate_shrub.get('sus_no_shrubs')) } zero-shrub
-  (of { _esc(gate_shrub.get('total_sus')) })</li>
-</ul>
+<section id="workflow">
+  <h2>Methodological workflow</h2>
+  <p class="lead">Anti-clip national frame: every SU keeps five plot slots even when trees or shrubs are absent.</p>
+  <div class="flow">
+    <div>1. Ingest national cleansed tables and attach SU_UID / PLOT_UID keys</div>
+    <div>2. Build SU × 5 anti-clip plot lattice for the full SU master</div>
+    <div>3. Presence gates (trees and shrubs) without deleting zero cells</div>
+    <div>4. Optional Area_H join from Asir and Makkah grids only</div>
+    <div>5. Tree biomass chain (calc DOCX): BA → volume → AGB → BGB → carbon → CO2eq</div>
+    <div>6. Shrub biomass chain (calc DOCX): mean CD, height cm → allometric AGB → BGB → carbon</div>
+    <div>7. Ancillary pools inventoried as counts (no invented biomass equations)</div>
+    <div>8. Univariate and bivariate EDA on provisional metrics</div>
+    <div>9. Static maps + interactive Leaflet HTML atlas + this report</div>
+  </div>
+</section>
 
-<h2>Sampling units by region</h2>
-{_df_html_table(by_region, max_rows=20)}
+<section id="numbers">
+  <h2>Key numbers at a glance</h2>
+  <p class="lead">Values below are taken from the computed run summary for this package run.</p>
+  <div class="kpis">{kpi_html}</div>
+</section>
 
-<h2>GIS Area_H coverage</h2>
-{_df_html_table(area_cov if area_cov is not None else pd.DataFrame(), max_rows=10)}
+<section id="methodology">
+  <h2>Methodology (official formulas)</h2>
+  <p class="lead">Source: <code>data/docs/NFI_ KSA Calculation_Trees&amp;shrubs.docx</code> and extract <code>data/docs/_calc_doc_extract.md</code>.</p>
+  <h3>Trees</h3>
+  <ul>
+    <li>Basal area (m²) = π × DBH² / 40000</li>
+    <li>Volume (m³) = BA × height (m) × form factor 0.65</li>
+    <li>AGB (Mg) = volume × wood density 0.6 × BEF 2</li>
+    <li>BGB (Mg) = AGB × 0.28</li>
+    <li>Carbon (Mg) = (AGB + BGB) × 0.47</li>
+    <li>CO₂eq (Mg) = Carbon × 3.67</li>
+    <li>Per-ha sample scaling uses conversion factor 10 (plot 1000 m²)</li>
+  </ul>
+  <h3>Shrubs</h3>
+  <ul>
+    <li>mean_CD_m = mean of crown diameters; height converted to cm</li>
+    <li>AGB = (exp(-0.37 + 1.903 log(CD) + 0.652 log(H)) + 1.403) / 1000</li>
+    <li>BGB = AGB × 0.28; carbon = (AGB + BGB) × 0.47</li>
+    <li>Shrub CO₂eq not stated in the DOCX shrub section (left blank)</li>
+  </ul>
+  <div class="note">Exclusions: trees exclude grass / Calotropis / palm substrings; shrubs exclude grass.</div>
+</section>
 
-<h2>Ancillary pools (inventory only)</h2>
-<div class="note">Biomass blocked for these pools: no equations in the calculation DOCX.</div>
-{_df_html_table(ancillary, max_rows=20)}
+<section id="regions">
+  <h2>Sampling units by region</h2>
+  {_df_html_table(by_region, max_rows=20)}
+  <h3>GIS Area_H coverage</h3>
+  {_df_html_table(area_cov if area_cov is not None else pd.DataFrame(), max_rows=10)}
+  <h3>Ancillary pools (inventory only)</h3>
+  {_df_html_table(ancillary, max_rows=20)}
+</section>
 
-<h2>Interactive maps (HTML)</h2>
-{atlas_link}
-<ul>{imap_links or '<li>No interactive maps written in this run.</li>'}</ul>
+<section id="univariate">
+  <h2>Univariate analysis</h2>
+  <p class="lead">National provisional tree and shrub metrics. Figures are embedded from this run.</p>
+  <h3>Tree provisional metrics (table)</h3>
+  {_df_html_table(uni_trees if uni_trees is not None else pd.DataFrame(), max_rows=20)}
+  <h3>Shrub provisional metrics (table)</h3>
+  {_df_html_table(uni_shrubs if uni_shrubs is not None else pd.DataFrame(), max_rows=20)}
+  {fig_block}
+</section>
 
-<h2>Static maps and EDA figures</h2>
-<ul>{static_maps}{fig_list}</ul>
+<section id="bivariate">
+  <h2>Bivariate analysis</h2>
+  <p class="lead">Pairwise correlations on provisional tree FV metrics (Spearman and Pearson).</p>
+  <h3>Spearman</h3>
+  {_df_html_table(biv_spearman if biv_spearman is not None else pd.DataFrame(), max_rows=30)}
+  <h3>Pearson</h3>
+  {_df_html_table(biv_pearson if biv_pearson is not None else pd.DataFrame(), max_rows=30)}
+</section>
 
-<h2>Open items</h2>
-<ul>{oi}</ul>
+<section id="maps">
+  <h2>Static map products</h2>
+  {map_block or '<p class="note">No static maps in this run.</p>'}
+</section>
 
-<h2>Assumptions logged with this run</h2>
-<ul>{assump}</ul>
+<section id="interactive">
+  <h2>Interactive map HTML and atlas</h2>
+  <p class="lead">Open the atlas portal for pan/zoom Leaflet maps on imagery basemaps (plots, tree presence, provisional carbon).</p>
+  <p>{atlas_btn}</p>
+  <p>{imap_btns}</p>
+</section>
 
-<h2>Reproducibility</h2>
-<ul>
-<li>Output root: <code>{_esc(run_summary.get('output_root'))}</code></li>
-<li>Run summary JSON: <code>logs/national_run_summary.json</code></li>
-<li>CLI twin: <code>python run_national_pipeline.py</code></li>
-<li>Scope label: <code>{_esc(run_summary.get('scope'))}</code></li>
-</ul>
+<section id="assumptions">
+  <h2>Open items and assumptions</h2>
+  <h3>Open items</h3>
+  <ul>{oi}</ul>
+  <h3>Assumptions logged with this run</h3>
+  <ul>{assump}</ul>
+</section>
+
+<section id="outputs">
+  <h2>Outputs to share</h2>
+  <ul>
+    <li>This report: <code>documents/NFI_national_geopipeline_report.html</code></li>
+    <li>Interactive atlas: <code>maps/html_atlas/index.html</code></li>
+    <li>Interactive maps: <code>maps/html_interactive/</code></li>
+    <li>Run receipt: <code>logs/national_run_summary.json</code></li>
+    <li>CLI twin: <code>python run_national_pipeline.py</code></li>
+    <li>Output root: <code>{_esc(run_summary.get('output_root'))}</code></li>
+  </ul>
+  <p>{atlas_btn}
+  <a class="btn soft" href="./NFI_national_geopipeline_report.html">This report</a></p>
+</section>
+
+</main>
+<footer>KSA NFI national geopipeline report · provisional sample metrics · generated from computed run objects only</footer>
 </body>
 </html>
 """
@@ -503,6 +648,17 @@ def produce_national_html_products(
     )
     # Also place copies/links usable from atlas: write atlas index with relative refs
     atlas_index = write_national_html_atlas(interactive, atlas_dir)
+
+    def _read_csv(path: Path) -> pd.DataFrame | None:
+        return pd.read_csv(path) if path.exists() else None
+
+    audit = out_root / "audit"
+    eda = out_root / "figures" / "national_eda"
+    uni_trees = _read_csv(audit / "univariate_national_trees_fv.csv")
+    uni_shrubs = _read_csv(audit / "univariate_national_shrubs_fv.csv")
+    biv_s = _read_csv(eda / "bivariate_spearman_trees_national.csv")
+    biv_p = _read_csv(eda / "bivariate_pearson_trees_national.csv")
+
     report = write_national_html_report(
         out_path=docs_dir / "NFI_national_geopipeline_report.html",
         run_summary=run_summary,
@@ -516,6 +672,10 @@ def produce_national_html_products(
         interactive_paths=interactive,
         atlas_index=atlas_index,
         assumptions=run_summary.get("assumptions"),
+        uni_trees=uni_trees,
+        uni_shrubs=uni_shrubs,
+        biv_spearman=biv_s,
+        biv_pearson=biv_p,
     )
     manifest = {
         "interactive_maps": interactive,

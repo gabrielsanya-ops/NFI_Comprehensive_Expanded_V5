@@ -229,9 +229,10 @@ Analysts and reviewers who need a **national** NFI geopipeline: ingest → anti-
 | 12 | Univariate / bivariate EDA figures |
 | 13 | Static national PNG maps |
 | 14 | **Interactive Leaflet HTML maps + atlas portal** |
-| 15 | **HTML reporting option** |
+| 15 | **HTML methodology report (LULC-style)** |
 | 16 | One-shot `run_national_pipeline` (includes HTML) |
-| 17 | Open and verify output files |
+| 17 | Verify output files |
+| 17b | **Deliverables: map HTML + report HTML links** |
 | 18 | Assumptions and open questions |
 | Appendix | CLI, file map, Part A pointer |
 """
@@ -576,17 +577,54 @@ print("LU proportion rows:", len(LU))
     )
 
     c.append(md("""<a id="s12"></a>
-## 12 · Sample roll-ups + EDA figures
+## 12 · Univariate and bivariate analysis (shown in this notebook)
 
-**User note:** Sample roll-ups (CF=10). Figures under `figures/national_eda/`.
+**User note:** This section is the main statistical view. It prints:
+1. Univariate summary tables for trees and shrubs,
+2. Bivariate Spearman / Pearson correlation tables,
+3. The corresponding PNG figures inline.
+
+Sample SU roll-ups (CF=10) are written alongside for the HTML report.
 """))
     c.append(
         code(
-            r"""ROLLED = aggregate_plot_su_metrics(TREE_M, SHRUB_M, LATTICE)
+            r"""from nfi_datascience import bivariate_numeric
+
+ROLLED = aggregate_plot_su_metrics(TREE_M, SHRUB_M, LATTICE)
 ROLLED["plot_metrics"].to_csv(OUT / "validated" / "national_plot_biomass_sample.csv", index=False)
 ROLLED["su_metrics"].to_csv(OUT / "validated" / "national_su_biomass_sample.csv", index=False)
-display(ROLLED["su_metrics"].head(8))
-FIG_PATHS = write_national_eda_figures(trees, TREE_M, SHRUB_M, OUT / "figures" / "national_eda", CFG)
+
+# --- Univariate tables (also written for the HTML report) ---
+UNI_T = univariate_numeric(
+    TREE_M, [c for c in ["basal_area_m2", "volume_m3", "agb_mg", "carbon_mg_provisional", "co2eq_mg_provisional"] if c in TREE_M.columns]
+)
+UNI_S = univariate_numeric(
+    SHRUB_M, [c for c in ["mean_CD_m", "height_cm", "agb_mg", "carbon_mg_provisional"] if c in SHRUB_M.columns]
+)
+UNI_T.to_csv(OUT / "audit" / "univariate_national_trees_fv.csv", index=False)
+UNI_S.to_csv(OUT / "audit" / "univariate_national_shrubs_fv.csv", index=False)
+display(Markdown("### Univariate · trees (provisional FV)"))
+display(UNI_T)
+display(Markdown("### Univariate · shrubs (provisional)"))
+display(UNI_S)
+
+# --- Bivariate correlation tables ---
+eng_cols = [c for c in ["basal_area_m2", "volume_m3", "agb_mg", "carbon_mg_provisional"] if c in TREE_M.columns]
+BIV_S = bivariate_numeric(TREE_M, eng_cols, method="spearman") if len(eng_cols) >= 2 else pd.DataFrame()
+BIV_P = bivariate_numeric(TREE_M, eng_cols, method="pearson") if len(eng_cols) >= 2 else pd.DataFrame()
+eda_dir = OUT / "figures" / "national_eda"
+eda_dir.mkdir(parents=True, exist_ok=True)
+if len(BIV_S):
+    BIV_S.to_csv(eda_dir / "bivariate_spearman_trees_national.csv", index=False)
+    BIV_P.to_csv(eda_dir / "bivariate_pearson_trees_national.csv", index=False)
+    display(Markdown("### Bivariate · Spearman (trees)"))
+    display(BIV_S)
+    display(Markdown("### Bivariate · Pearson (trees)"))
+    display(BIV_P)
+
+# --- Figures inline ---
+FIG_PATHS = write_national_eda_figures(trees, TREE_M, SHRUB_M, eda_dir, CFG)
+display(Markdown("### Univariate and bivariate figures"))
 for name, path in FIG_PATHS.items():
     print(name, "->", path)
     if path and Path(path).exists():
@@ -648,14 +686,13 @@ except Exception as e:
     )
 
     c.append(md("""<a id="s15"></a>
-## 15 · HTML reporting option
+## 15 · HTML methodology report (LULC-style)
 
-**User note:** Builds a shareable self-contained HTML report from **computed** KPIs, gates, region table, ancillary inventory, assumptions, and links to interactive maps. Safe to re-run after Section 14.
+**User note:** Builds a shareable HTML report similar in role to `LULC_VALIDATION_REPORT.html`: workflow, methodology, key numbers, **univariate and bivariate** tables/figures (embedded), static maps, and buttons to the interactive atlas. Safe to re-run after Sections 12 to 14.
 """))
     c.append(
         code(
-            r"""# Minimal run_summary for the report when running step-by-step (not the one-shot cell)
-guide_summary = {
+            r"""guide_summary = {
     "scope": "national_tabular_universe",
     "n_su": SUMMARY["n_su"],
     "n_regions": SUMMARY["n_regions"],
@@ -692,15 +729,23 @@ REPORT_PATH = write_national_html_report(
     map_paths=MAP_PATHS,
     interactive_paths=INTERACTIVE,
     atlas_index=ATLAS_INDEX,
+    uni_trees=globals().get("UNI_T"),
+    uni_shrubs=globals().get("UNI_S"),
+    biv_spearman=globals().get("BIV_S"),
+    biv_pearson=globals().get("BIV_P"),
 )
 HTML_PRODUCTS["html_report"] = str(REPORT_PATH)
 (OUT / "documents" / "national_html_manifest.json").write_text(
     json.dumps(HTML_PRODUCTS, indent=2), encoding="utf-8"
 )
 print("HTML report:", REPORT_PATH)
-display(HTML(f'<p><a class="btn" href="{REPORT_PATH.as_uri()}" target="_blank">Open HTML report</a></p>'))
+display(HTML(
+    f'<div style="padding:12px;border:1px solid #d5ddd7;border-radius:10px;background:#e8f0e9;">'
+    f'<b>Methodology HTML report</b><br/>'
+    f'<a href="{REPORT_PATH.as_uri()}" target="_blank">{REPORT_PATH}</a></div>'
+))
 try:
-    display(IFrame(src=REPORT_PATH.as_uri(), width="100%", height=520))
+    display(IFrame(src=REPORT_PATH.as_uri(), width="100%", height=640))
 except Exception as e:
     print("IFrame embed skipped:", e)
 """
@@ -743,7 +788,7 @@ print("Interactive themes:", list(INTERACTIVE.keys()) if isinstance(INTERACTIVE,
     c.append(md("""<a id="s17"></a>
 ## 17 · Verify outputs (checklist)
 
-**User note:** Confirm CSV, PNG, interactive HTML, atlas, and report exist. Share the HTML report and atlas with reviewers.
+**User note:** Confirm CSV, PNG, interactive HTML, atlas, and report exist.
 """))
     c.append(
         code(
@@ -752,17 +797,13 @@ print("Interactive themes:", list(INTERACTIVE.keys()) if isinstance(INTERACTIVE,
     OUT / "validated" / "national_plot_lattice.csv",
     OUT / "validated" / "national_trees_biomass_provisional.csv",
     OUT / "validated" / "national_shrubs_biomass_provisional.csv",
-    OUT / "validated" / "national_plot_biomass_sample.csv",
-    OUT / "validated" / "national_su_biomass_sample.csv",
-    OUT / "gates" / "national_gate_tree_presence.csv",
-    OUT / "gates" / "national_gate_shrub_presence.csv",
-    OUT / "audit" / "national_su_by_region.csv",
-    OUT / "audit" / "national_ancillary_pools.csv",
+    OUT / "audit" / "univariate_national_trees_fv.csv",
+    OUT / "audit" / "univariate_national_shrubs_fv.csv",
+    OUT / "figures" / "national_eda" / "univariate_trees_fv_national.png",
+    OUT / "figures" / "national_eda" / "bivariate_corr_pair_trees_national.png",
     OUT / "documents" / "NFI_national_geopipeline_report.html",
-    OUT / "documents" / "national_html_manifest.json",
     OUT / "maps" / "html_atlas" / "index.html",
     OUT / "maps" / "html_interactive" / "interactive_national_plots.html",
-    OUT / "maps" / "html_interactive" / "interactive_national_tree_presence.html",
 ]
 check = pd.DataFrame([
     {"path": str(p.relative_to(OUT)), "exists": p.exists(), "bytes": p.stat().st_size if p.exists() else 0}
@@ -770,8 +811,73 @@ check = pd.DataFrame([
 ])
 display(check)
 print("All required present:", bool(check["exists"].all()))
-print("Open report:", (OUT / "documents" / "NFI_national_geopipeline_report.html"))
-print("Open atlas :", (OUT / "maps" / "html_atlas" / "index.html"))
+"""
+        )
+    )
+
+    c.append(md("""<a id="s17b"></a>
+## Deliverables · open the map HTML and methodology report
+
+**User note:** These are the two shareable HTML products for the entire national process (analogous to `LULC_VALIDATION_REPORT.html` plus an interactive map atlas).
+"""))
+    c.append(
+        code(
+            r"""REPORT_PATH = Path(HTML_PRODUCTS.get("html_report") or OUT / "documents" / "NFI_national_geopipeline_report.html")
+ATLAS_INDEX = Path(HTML_PRODUCTS.get("atlas_index") or OUT / "maps" / "html_atlas" / "index.html")
+INTERACTIVE = HTML_PRODUCTS.get("interactive_maps") or {}
+if not INTERACTIVE:
+    imap = OUT / "maps" / "html_interactive"
+    INTERACTIVE = {p.stem.replace("interactive_national_", ""): str(p) for p in imap.glob("interactive_national_*.html")}
+
+# Re-show key EDA figures so they remain visible near the end of the notebook
+eda = OUT / "figures" / "national_eda"
+display(Markdown("### Univariate / bivariate figures (rerun display)"))
+for p in [
+    eda / "univariate_trees_national.png",
+    eda / "univariate_trees_fv_national.png",
+    eda / "bivariate_corr_pair_trees_national.png",
+    eda / "univariate_shrubs_national.png",
+]:
+    if p.exists():
+        display(Markdown(f"**{p.name}**"))
+        display(Image(filename=str(p)))
+
+links = [
+    ("Methodology + results HTML report", REPORT_PATH),
+    ("Interactive map atlas (Leaflet portal)", ATLAS_INDEX),
+]
+for name, p in INTERACTIVE.items():
+    links.append((f"Interactive map · {name}", Path(p)))
+
+rows = []
+html_bits = ['<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.5">']
+html_bits.append('<h3 style="color:#1b5e20;margin:0 0 8px">Open these HTML deliverables</h3>')
+for label, path in links:
+    path = Path(path)
+    ok = path.exists()
+    rows.append({"deliverable": label, "exists": ok, "path": str(path)})
+    if ok:
+        html_bits.append(
+            f'<p style="margin:8px 0"><a style="display:inline-block;padding:10px 14px;background:#14351c;color:#fff;'
+            f'text-decoration:none;border-radius:8px;font-weight:600" href="{path.as_uri()}" target="_blank">{label}</a>'
+            f'<br/><code style="font-size:12px">{path}</code></p>'
+        )
+    else:
+        html_bits.append(f'<p style="color:#a33">Missing: {label} ({path})</p>')
+html_bits.append("</div>")
+display(HTML("".join(html_bits)))
+display(pd.DataFrame(rows))
+
+try:
+    display(Markdown("### Atlas preview"))
+    display(IFrame(src=ATLAS_INDEX.as_uri(), width="100%", height=520))
+except Exception as e:
+    print("Atlas iframe skipped:", e)
+try:
+    display(Markdown("### Report preview"))
+    display(IFrame(src=REPORT_PATH.as_uri(), width="100%", height=640))
+except Exception as e:
+    print("Report iframe skipped:", e)
 """
         )
     )
