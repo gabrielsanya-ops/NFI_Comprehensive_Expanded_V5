@@ -1,12 +1,12 @@
 ﻿# Open in Colab
 
-## Improved comprehensive notebook (Part A + B + C)
+## V6 Improved · entire Kingdom only (preferred)
 
-https://colab.research.google.com/github/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5/blob/master/NFI_GeoAI_Comprehensive_Expanded_V5.ipynb
+https://colab.research.google.com/github/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5/blob/master/NFI_GeoAI_Comprehensive_Expanded_V6_Improved.ipynb
 
-Includes Part C national shortcut (N0 to N5): pipeline, atlas land-cover cartography, open HTML deliverables.
+National-only notebook (all regions, ~3,671 SU). No Asir 430-SU subset analysis.
 
-## National user-guide notebook (step-by-step preferred for country-wide runs)
+## National user-guide notebook (step-by-step)
 
 https://colab.research.google.com/github/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5/blob/master/NFI_National_GeoPipeline_Guide_V5.ipynb
 
@@ -15,12 +15,13 @@ https://github.com/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5
 
 Folder layout after bootstrap: see `docs/COLAB_DATA_LAYOUT.md`.
 
-Archive deep-dive gist (older Part A/B snapshot):
-https://colab.research.google.com/gist/gabrielsanya-ops/c98d2445f50b3781b7ab3e17007df532
+Archive deep-dive (Asir GIS Part A + expansion; optional):
+https://colab.research.google.com/github/gabrielsanya-ops/NFI_Comprehensive_Expanded_V5/blob/master/NFI_GeoAI_Comprehensive_Expanded_V5.ipynb
 
 Local notebooks:
-- **Comprehensive (Part A/B/C):** `NFI_GeoAI_Comprehensive_Expanded_V5.ipynb`
+- **V6 Improved (national only):** `NFI_GeoAI_Comprehensive_Expanded_V6_Improved.ipynb`
 - **National guide:** `NFI_National_GeoPipeline_Guide_V5.ipynb`
+- **Archive hybrid / Asir Part A:** `NFI_GeoAI_Comprehensive_Expanded_V5.ipynb`
 
 ## Run order on Colab (national guide)
 1. Open the Colab link above → Runtime → Connect
