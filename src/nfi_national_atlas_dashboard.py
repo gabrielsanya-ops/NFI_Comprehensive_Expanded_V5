@@ -154,12 +154,29 @@ def build_atlas_payload(
     else:
         themes = list(theme_meta.values())
 
+    # Keep only fields needed for theming / filters / KPIs (smaller atlas HTML)
+    keep_cols = {
+        "SU_UID", "region", "governorate",
+        "has_tree_record", "has_shrub_record", "has_fire", "has_deadwood",
+        "has_env_problem", "has_causative_agent",
+        "n_trees", "n_tree_species", "mean_dbh_cm", "mean_height_m",
+        "sum_basal_m2", "sum_volume_m3",
+        "sum_tree_agb_mg", "sum_tree_bgb_mg", "sum_tree_carbon_mg", "sum_tree_co2eq_mg",
+        "n_shrubs", "sum_shrub_agb_mg", "sum_shrub_carbon_mg",
+        "nat_lucs_mode", "tree_canopy_mode", "herbaceous_mode",
+        "fire_type_mode", "env_category_mode", "causative_agent_mode",
+        "tree_condition_mode", "crown_condition_mode",
+        "regen_count_sum", "stump_share", "coord_confidence_mode",
+    }
+    keep_cols |= {t.get("value_col") for t in themes if t.get("value_col")}
+    keep_cols = {c for c in keep_cols if c and c in themes_df.columns}
+
     features = []
     for _, row in themes_df.iterrows():
         lon, lat = row.get("lon_validated"), row.get("lat_validated")
         if pd.isna(lon) or pd.isna(lat):
             continue
-        props = {c: _json_safe(row.get(c)) for c in themes_df.columns}
+        props = {c: _json_safe(row.get(c)) for c in keep_cols}
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
@@ -248,85 +265,88 @@ _DASHBOARD_HTML = r"""<!DOCTYPE html>
 <title>KSA NFI National Atlas</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 :root{
   --ink:#14201a; --muted:#5b6b63; --line:#d7e0da; --paper:#f4f7f5; --card:#ffffff;
-  --forest:#1b5e20; --forest2:#2e7d32; --accent:#0e7c66; --warn:#d97706;
-  --shadow:0 10px 30px rgba(20,32,26,.08);
+  --forest:#1b5e20; --shadow:0 10px 30px rgba(20,32,26,.08);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:"IBM Plex Sans",Segoe UI,sans-serif;color:var(--ink);background:var(--paper)}
 .shell{display:grid;grid-template-rows:58px 1fr 132px;height:100%}
+.shell.fs-map{grid-template-rows:0 1fr 0}
+.shell.fs-map header.app, .shell.fs-map .kpi-strip, .shell.fs-map aside.panel{display:none}
+.shell.fs-map .workspace{grid-template-columns:1fr}
 header.app{
   display:flex;align-items:center;justify-content:space-between;gap:16px;
   padding:0 18px;background:linear-gradient(90deg,#12351c,#1b5e20 55%,#246b3a);
   color:#f4faf5;box-shadow:var(--shadow);z-index:5;
 }
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
-.logo{
-  width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.14);
-  display:grid;place-items:center;font-size:18px
-}
+.logo{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.14);display:grid;place-items:center;font-size:18px}
 .brand h1{margin:0;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand p{margin:2px 0 0;font-size:11px;opacity:.85}
 nav.tabs{display:flex;gap:6px;flex-wrap:wrap}
-nav.tabs button{
-  border:0;background:transparent;color:#e8f5e9;padding:8px 12px;border-radius:999px;
-  font-weight:600;font-size:12px;cursor:pointer
-}
+nav.tabs button{border:0;background:transparent;color:#e8f5e9;padding:8px 12px;border-radius:999px;font-weight:600;font-size:12px;cursor:pointer}
 nav.tabs button.active{background:rgba(255,255,255,.95);color:#14351c}
-.workspace{display:grid;grid-template-columns:320px 1fr;min-height:0}
-aside.panel{
-  background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-right:1px solid var(--line);
-  overflow:auto;padding:14px 12px 18px
-}
+.workspace{display:grid;grid-template-columns:300px 1fr;min-height:0}
+aside.panel{background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-right:1px solid var(--line);overflow:auto;padding:14px 12px 18px}
 .panel h2{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .panel .lead{font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.45}
 .filters{display:grid;gap:8px;margin-bottom:12px}
 .filters label{font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px}
-.filters select, .filters input{
-  width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;font:inherit
-}
+.filters select, .filters input{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;font:inherit}
 .cat{margin:14px 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.theme{
-  width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;
-  padding:9px 10px;margin:0 0 7px;cursor:pointer;display:flex;gap:10px;align-items:flex-start
-}
+.theme{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px 10px;margin:0 0 7px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
 .theme:hover{border-color:#9ccc9c}
 .theme.active{border-color:var(--forest);box-shadow:0 0 0 2px rgba(27,94,32,.12);background:#f3faf4}
-.theme .ico{
-  width:28px;height:28px;border-radius:8px;background:#e8f5e9;display:grid;place-items:center;flex:0 0 auto;font-size:14px
-}
+.theme .ico{width:28px;height:28px;border-radius:8px;background:#e8f5e9;display:grid;place-items:center;flex:0 0 auto;font-size:14px}
 .theme strong{display:block;font-size:12.5px}
 .theme span{display:block;font-size:11px;color:var(--muted);margin-top:2px;line-height:1.35}
 .mapwrap{position:relative;min-height:0}
 #map{position:absolute;inset:0;background:#0b1a12}
 .float{
-  position:absolute;z-index:500;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);
-  border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px
+  position:absolute;z-index:650;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:0;min-width:180px;user-select:none
 }
-.float.basemap{top:14px;right:14px;width:210px;font-size:12px}
-.float.info{top:14px;left:58px;max-width:340px}
+.float .hd{
+  cursor:move;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;font-weight:700;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;background:linear-gradient(180deg,#f8faf8,#fff)
+}
+.float .hd .tools{display:flex;gap:4px}
+.float .hd button{border:0;background:#eef2f0;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px;line-height:1}
+.float .bd{padding:10px 12px;font-size:12px}
+.float.basemap{top:14px;right:14px;width:220px}
+.float.info{top:14px;left:58px;max-width:320px}
+.float.legend{bottom:18px;right:14px;width:210px}
+.float.charts{bottom:18px;left:14px;width:300px}
 .float h3{margin:0 0 4px;font-size:13px}
 .float p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.4}
 .float .row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle;border:1px solid rgba(0,0,0,.15)}
+.sw.sq{border-radius:3px}
+.legend-scale{display:flex;align-items:flex-end;gap:10px;margin-top:8px}
+.legend-scale .dot{border-radius:50%;background:#64748b;display:inline-block}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:#e8f5e9;color:#1b5e20;font-size:11px;font-weight:700}
+.map-toolbar{
+  position:absolute;top:14px;left:14px;z-index:700;display:flex;flex-direction:column;gap:6px
+}
+.map-toolbar button{
+  width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.95);
+  box-shadow:var(--shadow);cursor:pointer;font-size:14px
+}
 .kpi-strip{
   display:grid;grid-template-columns:repeat(8,minmax(110px,1fr));gap:10px;padding:12px 14px;
   background:linear-gradient(180deg,#ffffff,#f7faf8);border-top:1px solid var(--line);overflow:auto
 }
-.kpi{
-  background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:120px;
-  box-shadow:0 4px 14px rgba(20,32,26,.04)
-}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:120px;box-shadow:0 4px 14px rgba(20,32,26,.04)}
 .kpi .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .kpi .label{font-size:11px;color:var(--muted);font-weight:600}
 .kpi .value{font-size:20px;font-weight:800;margin-top:4px;letter-spacing:-.02em}
 .kpi .unit{font-size:11px;color:var(--muted)}
 .kpi .ico{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:14px}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:#e8f5e9;color:#1b5e20;font-size:11px;font-weight:700}
-.legend{position:absolute;bottom:18px;right:14px;z-index:500;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:11px}
-.legend .sw{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle}
+#chartHist,#chartCat{width:100%!important;max-height:150px}
 @media (max-width:1100px){
   .workspace{grid-template-columns:280px 1fr}
   .kpi-strip{grid-template-columns:repeat(4,minmax(120px,1fr))}
@@ -339,7 +359,7 @@ aside.panel{
 </style>
 </head>
 <body>
-<div class="shell">
+<div class="shell" id="shell">
   <header class="app">
     <div class="brand">
       <div class="logo">🌲</div>
@@ -359,7 +379,7 @@ aside.panel{
   <div class="workspace">
     <aside class="panel">
       <h2>Atlas controls</h2>
-      <p class="lead">Select a thematic layer. KPIs below the map update for the current theme and admin filter (national, region, or governorate / province).</p>
+      <p class="lead">Theme colours follow cartographic convention (green for living vegetation; brown/amber/red for deadwood, fire and disturbance). Drag legend and charts freely. Use fullscreen for presentation.</p>
       <div class="filters">
         <div>
           <label for="adminLevel">Admin level</label>
@@ -389,21 +409,46 @@ aside.panel{
       <div id="themeList"></div>
     </aside>
 
-    <div class="mapwrap">
+    <div class="mapwrap" id="mapwrap">
       <div id="map"></div>
+      <div class="map-toolbar">
+        <button type="button" id="btnFullscreen" title="Fullscreen map">⛶</button>
+        <button type="button" id="btnToggleLegend" title="Toggle legend">▣</button>
+        <button type="button" id="btnToggleCharts" title="Toggle charts">◔</button>
+      </div>
+
       <div class="float info" id="themeInfo">
-        <h3 id="themeTitle">Loading…</h3>
-        <p id="themeBlurb"></p>
-        <div style="margin-top:8px"><span class="badge" id="scopeBadge">National</span></div>
+        <div class="hd" data-drag="themeInfo"><span>Theme</span><div class="tools"><button type="button" data-min="themeInfo">-</button></div></div>
+        <div class="bd" id="themeInfoBd">
+          <h3 id="themeTitle">Loading…</h3>
+          <p id="themeBlurb"></p>
+          <div style="margin-top:8px"><span class="badge" id="scopeBadge">National</span></div>
+        </div>
       </div>
-      <div class="float basemap">
-        <strong>Basemap</strong>
-        <div class="row"><input type="radio" name="bm" id="bmEsri" checked/> <label for="bmEsri">Esri World Imagery</label></div>
-        <div class="row"><input type="radio" name="bm" id="bmGoogle"/> <label for="bmGoogle">Google Satellite</label></div>
-        <div class="row"><input type="radio" name="bm" id="bmHybrid"/> <label for="bmHybrid">Google Hybrid</label></div>
-        <div class="row"><input type="checkbox" id="lblPlaces" checked/> <label for="lblPlaces">Countries and cities</label></div>
+
+      <div class="float basemap" id="basemapPanel">
+        <div class="hd" data-drag="basemapPanel"><span>Basemap</span><div class="tools"><button type="button" data-min="basemapPanel">-</button></div></div>
+        <div class="bd" id="basemapPanelBd">
+          <div class="row"><input type="radio" name="bm" id="bmEsri" checked/> <label for="bmEsri">Esri World Imagery</label></div>
+          <div class="row"><input type="radio" name="bm" id="bmGoogle"/> <label for="bmGoogle">Google Satellite</label></div>
+          <div class="row"><input type="radio" name="bm" id="bmHybrid"/> <label for="bmHybrid">Google Hybrid</label></div>
+          <div class="row"><input type="checkbox" id="lblPlaces" checked/> <label for="lblPlaces">Countries and cities</label></div>
+        </div>
       </div>
-      <div class="legend" id="legend"></div>
+
+      <div class="float legend" id="legendPanel">
+        <div class="hd" data-drag="legendPanel"><span>Legend</span><div class="tools"><button type="button" data-min="legendPanel">-</button></div></div>
+        <div class="bd" id="legend"></div>
+      </div>
+
+      <div class="float charts" id="chartPanel">
+        <div class="hd" data-drag="chartPanel"><span>Theme statistics</span><div class="tools"><button type="button" data-min="chartPanel">-</button></div></div>
+        <div class="bd" id="chartPanelBd">
+          <canvas id="chartHist" height="120"></canvas>
+          <canvas id="chartCat" height="120" style="display:none"></canvas>
+          <p id="chartNote" style="margin-top:6px;color:var(--muted);font-size:11px"></p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -420,6 +465,10 @@ const STATE = {
   layer: null,
   layerPts: null,
   search: '',
+  chartHist: null,
+  chartCat: null,
+  _vmax: 1,
+  _vmin: 0,
 };
 
 const ICONS = {
@@ -428,6 +477,50 @@ const ICONS = {
   'Vegetation cover':'🍃', Disturbance:'🔥', 'Deadwood and regen':'🪵',
   'Tree health':'❤️', 'Coordinate QA':'📍', Themes:'📊'
 };
+
+/* Semantic cartographic palettes (avoid green for dead / fire / damage) */
+const PAL = {
+  vegYes:'#1b7f4e', vegNo:'#cbd5e1',
+  deadYes:'#6b4f3a', deadNo:'#e7e5e4',
+  fireYes:'#c2410c', fireNo:'#e5e7eb',
+  stumpHi:'#7c2d12', stumpLo:'#fed7aa',
+  diseaseYes:'#7e22ce', diseaseNo:'#e9d5ff',
+  envYes:'#b45309', envNo:'#fef3c7',
+  biomass:['#f7fcb9','#addd8e','#41ab5d','#006837'],
+  structure:['#eff3ff','#bdd7ee','#6baed6','#08519c'],
+  carbon:['#ffffcc','#a1dab4','#41b6c4','#225ea8'],
+  warn:['#fff7bc','#fec44f','#d95f0e','#7f0000'],
+  brown:['#efeee5','#d9c8b4','#a67c52','#5c4033'],
+  purple:['#f3e8ff','#d8b4fe','#a855f7','#6b21a8'],
+};
+
+function paletteFor(theme){
+  const id = theme?.id || '';
+  const cat = theme?.category || '';
+  if(id==='deadwood_presence' || cat==='Deadwood and regen') return {type:'binary', yes:PAL.deadYes, no:PAL.deadNo, ramp:PAL.brown, labelYes:'Deadwood present', labelNo:'No deadwood'};
+  if(id==='fire_presence' || id==='fire_type') return {type:'binary', yes:PAL.fireYes, no:PAL.fireNo, ramp:PAL.warn, labelYes:'Fire evidence', labelNo:'No fire'};
+  if(id==='stump_share') return {type:'cont', ramp:PAL.brown, label:'Stump share'};
+  if(id==='has_causative_agent' || id==='causative_agent' || id==='crown_condition' || id==='tree_condition')
+    return {type:'binary', yes:PAL.diseaseYes, no:PAL.diseaseNo, ramp:PAL.purple, labelYes:'Recorded / affected', labelNo:'Not recorded'};
+  if(id==='env_problem' || id==='env_category') return {type:'binary', yes:PAL.envYes, no:PAL.envNo, ramp:PAL.warn, labelYes:'Env. problem', labelNo:'None'};
+  if(id==='tree_presence' || id==='shrub_presence' || cat==='Gates') return {type:'binary', yes:PAL.vegYes, no:PAL.vegNo, ramp:PAL.biomass, labelYes:'Present', labelNo:'Absent'};
+  if(cat==='Biomass and carbon' || cat==='Shrubs') return {type:'cont', ramp:PAL.carbon};
+  if(cat==='Structure' || cat==='Biodiversity') return {type:'cont', ramp:PAL.structure};
+  if(cat==='Disturbance' || cat==='Tree health') return {type:'cont', ramp:PAL.warn};
+  return {type:'cont', ramp:PAL.structure};
+}
+
+function rampColor(ramp, t){
+  const i = Math.min(ramp.length-1, Math.max(0, Math.floor(t * (ramp.length-1) + 1e-9)));
+  // blend between neighbouring stops
+  const f = t * (ramp.length-1);
+  const i0 = Math.floor(f), i1 = Math.min(ramp.length-1, i0+1);
+  const u = f - i0;
+  const hex = (h)=>{const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255];};
+  const a=hex(ramp[i0]), b=hex(ramp[i1]);
+  const r=Math.round(a[0]*(1-u)+b[0]*u), g=Math.round(a[1]*(1-u)+b[1]*u), bl=Math.round(a[2]*(1-u)+b[2]*u);
+  return `rgb(${r},${g},${bl})`;
+}
 
 function fmt(v, digits=1){
   if(v===null || v===undefined || Number.isNaN(v)) return '-';
@@ -438,15 +531,26 @@ function fmt(v, digits=1){
   return String(v);
 }
 
-function themeById(id){
-  return (STATE.data.themes || []).find(t => t.id === id);
-}
+function themeById(id){ return (STATE.data.themes || []).find(t => t.id === id); }
 
 function filteredFeatures(){
   const feats = STATE.data.geojson.features || [];
-  const level = STATE.adminLevel;
-  const name = STATE.adminName;
-  const q = (STATE.search || '').trim().toLowerCase();
+  const level = STATE.adminLevel, name = STATE.adminName, q = (STATE.search || '').trim().toLowerCase();
+  return feats.filter(f => {
+    const p = f.properties || {};
+    if(level === 'region' && name && String(p.region||'') !== name) return false;
+    if(level === 'governorate' && name && String(p.governorate||'') !== name) return false;
+    if(q){
+      const blob = [p.SU_UID, p.region, p.governorate].join(' ').toLowerCase();
+      if(!blob.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function filteredVoronoi(){
+  const feats = (STATE.data.voronoi && STATE.data.voronoi.features) || [];
+  const level = STATE.adminLevel, name = STATE.adminName, q = (STATE.search || '').trim().toLowerCase();
   return feats.filter(f => {
     const p = f.properties || {};
     if(level === 'region' && name && String(p.region||'') !== name) return false;
@@ -460,7 +564,6 @@ function filteredFeatures(){
 }
 
 function kpiSource(){
-  // Prefer pre-aggregated admin tables when filtering by one admin unit
   if(STATE.adminLevel === 'region' && STATE.adminName){
     const row = (STATE.data.by_region||[]).find(r => r.name === STATE.adminName);
     if(row) return row;
@@ -469,15 +572,12 @@ function kpiSource(){
     const row = (STATE.data.by_governorate||[]).find(r => r.name === STATE.adminName);
     if(row) return row;
   }
-  // Otherwise recompute from currently filtered features (includes search)
-  const feats = filteredFeatures();
-  const rows = feats.map(f => f.properties);
+  const rows = filteredFeatures().map(f => f.properties);
   const n = rows.length;
   const pct = (col) => {
     const vals = rows.map(r => r[col]).filter(v => v!==null && v!==undefined);
     if(!vals.length) return null;
-    const t = vals.filter(v => v===true || v==='True' || v===1).length;
-    return 100 * t / vals.length;
+    return 100 * vals.filter(v => v===true || v==='True' || v===1).length / vals.length;
   };
   const mean = (col) => {
     const vals = rows.map(r => Number(r[col])).filter(v => Number.isFinite(v));
@@ -515,7 +615,6 @@ function kpiSource(){
 }
 
 function cardsForTheme(theme, k){
-  // Always show scope size + theme-relevant metrics (computed)
   const base = [
     {label:'Total SU', value:fmt(k.n_su,0), unit:'Sample units in scope', ico:'📍', bg:'#e8f5e9'},
     {label:'Tree presence', value:fmt(k.tree_presence_pct,1)+'%', unit:'SUs with tree records', ico:'🌲', bg:'#e3f2fd'},
@@ -523,53 +622,30 @@ function cardsForTheme(theme, k){
   ];
   const id = theme?.id || '';
   const extra = [];
-  if(['mean_dbh','tree_count','mean_height','sum_basal','sum_volume','stump_share','species_richness'].includes(id) || theme?.category==='Structure' || theme?.category==='Biodiversity'){
-    extra.push(
-      {label:'Mean DBH', value:fmt(k.mean_dbh_cm,1), unit:'cm (SU mean of means)', ico:'📏', bg:'#e3f2fd'},
-      {label:'Mean height', value:fmt(k.mean_height_m,1), unit:'m (SU mean of means)', ico:'📐', bg:'#f3e5f5'},
-      {label:'Basal area', value:fmt(k.sum_basal_m2,1), unit:'m² sum in scope', ico:'🪵', bg:'#efebe9'},
-      {label:'Volume (prov.)', value:fmt(k.sum_volume_m3,1), unit:'m³ sum in scope', ico:'📦', bg:'#e8eaf6'},
-      {label:'Mean trees / SU', value:fmt(k.mean_n_trees,1), unit:'where trees present', ico:'🔢', bg:'#e8f5e9'},
-    );
-  } else if(theme?.category==='Biomass and carbon' || ['sum_agb','sum_bgb','sum_carbon','sum_co2eq'].includes(id)){
-    extra.push(
-      {label:'AGB (prov.)', value:fmt(k.sum_tree_agb_mg,1), unit:'Mg sum in scope', ico:'🌳', bg:'#e8f5e9'},
-      {label:'BGB (prov.)', value:fmt(k.sum_tree_bgb_mg,1), unit:'Mg sum in scope', ico:'🌱', bg:'#f1f8e9'},
-      {label:'Carbon (prov.)', value:fmt(k.sum_tree_carbon_mg,1), unit:'Mg sum in scope', ico:'⬛', bg:'#efebe9'},
-      {label:'CO₂eq (prov.)', value:fmt(k.sum_tree_co2eq_mg,1), unit:'Mg sum in scope', ico:'☁️', bg:'#e3f2fd'},
-      {label:'Mean DBH', value:fmt(k.mean_dbh_cm,1), unit:'cm', ico:'📏', bg:'#e3f2fd'},
-    );
-  } else if(theme?.category==='Shrubs'){
-    extra.push(
-      {label:'Shrub AGB', value:fmt(k.sum_shrub_agb_mg,1), unit:'Mg sum in scope', ico:'🌾', bg:'#fff8e1'},
-      {label:'Shrub carbon', value:fmt(k.sum_shrub_carbon_mg,1), unit:'Mg sum in scope', ico:'⬛', bg:'#efebe9'},
-      {label:'Tree presence', value:fmt(k.tree_presence_pct,1)+'%', unit:'context', ico:'🌲', bg:'#e8f5e9'},
-      {label:'Mean height', value:fmt(k.mean_height_m,1), unit:'m trees', ico:'📐', bg:'#f3e5f5'},
-      {label:'Regen sum', value:fmt(k.sum_regen,0), unit:'count field sum', ico:'🌱', bg:'#e8f5e9'},
-    );
-  } else if(theme?.category==='Disturbance' || theme?.category==='Tree health' || ['fire_presence','fire_type','env_problem','env_category','causative_agent','has_causative_agent','tree_condition','crown_condition'].includes(id)){
+  if(theme?.category==='Disturbance' || theme?.category==='Tree health' || theme?.category==='Deadwood and regen' ||
+     ['fire_presence','deadwood_presence','causative_agent','has_causative_agent','stump_share'].includes(id)){
     extra.push(
       {label:'Fire present', value:fmt(k.fire_presence_pct,1)+'%', unit:'SUs with fire evidence', ico:'🔥', bg:'#ffebee'},
-      {label:'Env. problem', value:fmt(k.env_problem_pct,1)+'%', unit:'SUs with env. records', ico:'⚠️', bg:'#fff3e0'},
-      {label:'Agent recorded', value:fmt(k.causative_agent_pct,1)+'%', unit:'SUs with causative agent', ico:'🦠', bg:'#fce4ec'},
       {label:'Deadwood', value:fmt(k.deadwood_presence_pct,1)+'%', unit:'SUs with deadwood', ico:'🪵', bg:'#efebe9'},
-      {label:'Stump share', value:fmt((k.mean_stump_share||0)*100,1)+'%', unit:'mean of SU shares', ico:'🪓', bg:'#fff8e1'},
+      {label:'Agent recorded', value:fmt(k.causative_agent_pct,1)+'%', unit:'SUs with causative agent', ico:'🦠', bg:'#f3e8ff'},
+      {label:'Env. problem', value:fmt(k.env_problem_pct,1)+'%', unit:'SUs with env. records', ico:'⚠️', bg:'#fff7ed'},
+      {label:'Stump share', value:fmt((k.mean_stump_share||0)*100,1)+'%', unit:'mean of SU shares', ico:'🪓', bg:'#ffedd5'},
     );
-  } else if(theme?.category==='Deadwood and regen'){
+  } else if(theme?.category==='Biomass and carbon' || theme?.category==='Shrubs'){
     extra.push(
-      {label:'Deadwood', value:fmt(k.deadwood_presence_pct,1)+'%', unit:'SUs with deadwood', ico:'🪵', bg:'#efebe9'},
-      {label:'Regen sum', value:fmt(k.sum_regen,0), unit:'count field sum', ico:'🌱', bg:'#e8f5e9'},
-      {label:'Shrub presence', value:fmt(k.shrub_presence_pct,1)+'%', unit:'context', ico:'🌾', bg:'#fff8e1'},
-      {label:'Tree presence', value:fmt(k.tree_presence_pct,1)+'%', unit:'context', ico:'🌲', bg:'#e8f5e9'},
-      {label:'Carbon (prov.)', value:fmt(k.sum_tree_carbon_mg,1), unit:'Mg sum', ico:'⬛', bg:'#efebe9'},
+      {label:'AGB (prov.)', value:fmt(k.sum_tree_agb_mg,1), unit:'Mg sum in scope', ico:'🌳', bg:'#e8f5e9'},
+      {label:'Carbon (prov.)', value:fmt(k.sum_tree_carbon_mg,1), unit:'Mg sum in scope', ico:'⬛', bg:'#efebe9'},
+      {label:'Shrub AGB', value:fmt(k.sum_shrub_agb_mg,1), unit:'Mg sum', ico:'🌾', bg:'#fff8e1'},
+      {label:'Mean DBH', value:fmt(k.mean_dbh_cm,1), unit:'cm', ico:'📏', bg:'#e3f2fd'},
+      {label:'Mean height', value:fmt(k.mean_height_m,1), unit:'m', ico:'📐', bg:'#f3e5f5'},
     );
   } else {
     extra.push(
       {label:'Mean DBH', value:fmt(k.mean_dbh_cm,1), unit:'cm', ico:'📏', bg:'#e3f2fd'},
       {label:'Mean height', value:fmt(k.mean_height_m,1), unit:'m', ico:'📐', bg:'#f3e5f5'},
       {label:'Basal area', value:fmt(k.sum_basal_m2,1), unit:'m² sum', ico:'🪵', bg:'#efebe9'},
-      {label:'Volume (prov.)', value:fmt(k.sum_volume_m3,1), unit:'m³ sum', ico:'📦', bg:'#e8eaf6'},
       {label:'AGB (prov.)', value:fmt(k.sum_tree_agb_mg,1), unit:'Mg sum', ico:'🌳', bg:'#e8f5e9'},
+      {label:'Mean trees / SU', value:fmt(k.mean_n_trees,1), unit:'count', ico:'🔢', bg:'#e8f5e9'},
     );
   }
   return base.concat(extra).slice(0,8);
@@ -579,88 +655,155 @@ function renderKpis(){
   const theme = themeById(STATE.themeId);
   const k = kpiSource();
   const cards = cardsForTheme(theme, k);
-  const el = document.getElementById('kpiStrip');
-  el.innerHTML = cards.map(c => `
-    <div class="kpi">
-      <div class="top">
-        <div class="label">${c.label}</div>
-        <div class="ico" style="background:${c.bg}">${c.ico}</div>
-      </div>
-      <div class="value">${c.value}</div>
-      <div class="unit">${c.unit}</div>
-    </div>`).join('');
+  document.getElementById('kpiStrip').innerHTML = cards.map(c => `
+    <div class="kpi"><div class="top"><div class="label">${c.label}</div>
+    <div class="ico" style="background:${c.bg}">${c.ico}</div></div>
+    <div class="value">${c.value}</div><div class="unit">${c.unit}</div></div>`).join('');
   const scope = STATE.adminLevel === 'national' ? 'National'
     : (STATE.adminName ? `${STATE.adminLevel}: ${STATE.adminName}` : `${STATE.adminLevel}: all`);
   document.getElementById('scopeBadge').textContent = scope + ` · n=${fmt(k.n_su,0)} SU`;
 }
 
+function updateVmax(theme, feats){
+  if(theme.kind !== 'continuous' || !theme.value_col){ STATE._vmax = 1; STATE._vmin = 0; return; }
+  const vals = feats.map(f => Number(f.properties[theme.value_col])).filter(v => Number.isFinite(v)).sort((a,b)=>a-b);
+  if(!vals.length){ STATE._vmax = 1; STATE._vmin = 0; return; }
+  STATE._vmin = vals[0];
+  STATE._vmax = vals[Math.min(vals.length-1, Math.floor(vals.length*0.95))] || 1;
+  if(STATE._vmax <= STATE._vmin) STATE._vmax = STATE._vmin + 1e-9;
+}
+
 function colorFor(theme, props){
+  const pal = paletteFor(theme);
   const col = theme.value_col;
   const kind = theme.kind;
   if(kind === 'binary'){
     const v = props[col];
     const yes = v===true || v==='True' || v===1;
-    return yes ? '#2e7d32' : '#ef6c00';
+    return yes ? pal.yes : pal.no;
   }
   if(kind === 'categorical'){
     const raw = String(props[col] ?? 'NA');
     let hash = 0;
     for(let i=0;i<raw.length;i++) hash = ((hash<<5)-hash)+raw.charCodeAt(i);
-    const palette = ['#0072B2','#E69F00','#009E73','#D55E00','#CC79A7','#56B4E9','#F0E442','#882255','#44AA99','#117733'];
-    return palette[Math.abs(hash)%palette.length];
+    // categorical: use theme ramp ends + fixed distinct colours (no pure vegetation green for damage themes)
+    const base = (pal.ramp && pal.ramp.length) ? pal.ramp : ['#0072B2','#E69F00','#D55E00','#CC79A7','#56B4E9','#882255','#44AA99'];
+    return base[Math.abs(hash) % base.length];
   }
   if(kind === 'continuous'){
     const v = Number(props[col]);
-    if(!Number.isFinite(v)) return '#9e9e9e';
-    // relative colour needs vmax; approximate with log-ish bins on value itself
-    const t = Math.max(0, Math.min(1, v / (STATE._vmax || 1)));
-    if(t > 0.75) return '#08306b';
-    if(t > 0.5) return '#2171b5';
-    if(t > 0.25) return '#6baed6';
-    return '#c6dbef';
+    if(!Number.isFinite(v)) return '#94a3b8';
+    const t = Math.max(0, Math.min(1, (v - STATE._vmin) / (STATE._vmax - STATE._vmin)));
+    return rampColor(pal.ramp || PAL.structure, t);
   }
-  return '#1b5e20';
+  return '#475569';
 }
 
-function updateVmax(theme, feats){
-  if(theme.kind !== 'continuous' || !theme.value_col){ STATE._vmax = 1; return; }
-  const vals = feats.map(f => Number(f.properties[theme.value_col])).filter(v => Number.isFinite(v) && v>0).sort((a,b)=>a-b);
-  if(!vals.length){ STATE._vmax = 1; return; }
-  const idx = Math.min(vals.length-1, Math.floor(vals.length*0.95));
-  STATE._vmax = vals[idx] || 1;
+function radiusFor(theme, props){
+  // Smaller base markers; continuous themes scale with value
+  if(theme.kind === 'continuous' && theme.value_col){
+    const v = Number(props[theme.value_col]);
+    if(!Number.isFinite(v)) return 2.2;
+    const t = Math.max(0, Math.min(1, (v - STATE._vmin) / (STATE._vmax - STATE._vmin)));
+    return 2.0 + 4.5 * Math.sqrt(t); // ~2.0 to 6.5 px
+  }
+  if(theme.kind === 'binary'){
+    const v = props[theme.value_col];
+    const yes = v===true || v==='True' || v===1;
+    return yes ? 3.2 : 2.2;
+  }
+  return 2.6;
 }
 
 function renderLegend(theme){
   const el = document.getElementById('legend');
+  const pal = paletteFor(theme);
+  let html = `<div style="font-weight:700;margin-bottom:6px">${theme.title}</div>`;
   if(theme.kind === 'binary'){
-    el.innerHTML = `<div><span class="sw" style="background:#2e7d32"></span>Yes / present</div>
-                    <div><span class="sw" style="background:#ef6c00"></span>No / absent</div>`;
+    html += `<div><span class="sw" style="background:${pal.yes}"></span>${pal.labelYes||'Yes / present'}</div>
+             <div><span class="sw" style="background:${pal.no}"></span>${pal.labelNo||'No / absent'}</div>`;
   } else if(theme.kind === 'continuous'){
-    el.innerHTML = `<div><b>${theme.title}</b></div>
-      <div><span class="sw" style="background:#c6dbef"></span>Low</div>
-      <div><span class="sw" style="background:#6baed6"></span>Mid</div>
-      <div><span class="sw" style="background:#2171b5"></span>High</div>
-      <div><span class="sw" style="background:#08306b"></span>Top ~5%</div>`;
+    const ramp = pal.ramp || PAL.structure;
+    html += `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;border:1px solid #cbd5e1;margin:6px 0">
+      ${ramp.map(c=>`<div style="flex:1;background:${c}"></div>`).join('')}</div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#64748b">
+        <span>${fmt(STATE._vmin,2)}</span><span>${fmt(STATE._vmax,2)} (p95)</span></div>
+      <div class="legend-scale">
+        <span class="dot" style="width:8px;height:8px"></span><span style="font-size:10px">Low</span>
+        <span class="dot" style="width:14px;height:14px"></span><span style="font-size:10px">High</span>
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:#64748b">Marker size scales with value</div>`;
   } else {
-    el.innerHTML = `<div><b>${theme.title}</b></div><div>Categorical colours by class</div>`;
+    html += `<div style="font-size:11px;color:#64748b">Categorical classes (theme palette)</div>
+      <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
+      ${(pal.ramp||[]).map(c=>`<span class="sw sq" style="background:${c}"></span>`).join('')}</div>`;
   }
+  el.innerHTML = html;
 }
 
-function filteredVoronoi(){
-  const feats = (STATE.data.voronoi && STATE.data.voronoi.features) || [];
-  const level = STATE.adminLevel;
-  const name = STATE.adminName;
-  const q = (STATE.search || '').trim().toLowerCase();
-  return feats.filter(f => {
-    const p = f.properties || {};
-    if(level === 'region' && name && String(p.region||'') !== name) return false;
-    if(level === 'governorate' && name && String(p.governorate||'') !== name) return false;
-    if(q){
-      const blob = [p.SU_UID, p.region, p.governorate].join(' ').toLowerCase();
-      if(!blob.includes(q)) return false;
+function renderCharts(theme, feats){
+  const note = document.getElementById('chartNote');
+  const histEl = document.getElementById('chartHist');
+  const catEl = document.getElementById('chartCat');
+  if(STATE.chartHist){ STATE.chartHist.destroy(); STATE.chartHist=null; }
+  if(STATE.chartCat){ STATE.chartCat.destroy(); STATE.chartCat=null; }
+
+  const col = theme.value_col;
+  if(!col){
+    histEl.style.display='none'; catEl.style.display='none';
+    note.textContent = 'No numeric/categorical field for this theme.';
+    return;
+  }
+  const pal = paletteFor(theme);
+  if(theme.kind === 'continuous'){
+    histEl.style.display='block'; catEl.style.display='none';
+    const vals = feats.map(f => Number(f.properties[col])).filter(v => Number.isFinite(v));
+    if(vals.length < 5){ note.textContent='Too few values for histogram.'; return; }
+    const bins = 12;
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const width = (hi-lo)/(bins||1) || 1;
+    const counts = Array(bins).fill(0);
+    vals.forEach(v => {
+      let i = Math.floor((v-lo)/width);
+      if(i>=bins) i=bins-1;
+      counts[i]++;
+    });
+    const labels = counts.map((_,i)=> fmt(lo+i*width,1));
+    STATE.chartHist = new Chart(histEl, {
+      type:'bar',
+      data:{labels, datasets:[{label:col, data:counts, backgroundColor: rampColor(pal.ramp||PAL.structure, 0.55), borderRadius:4}]},
+      options:{plugins:{legend:{display:false}}, scales:{x:{ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:6, font:{size:9}}}, y:{beginAtZero:true, ticks:{font:{size:9}}}}, maintainAspectRatio:false}
+    });
+    note.textContent = `Histogram of ${col} (n=${vals.length}). Mean=${fmt(vals.reduce((a,b)=>a+b,0)/vals.length,2)}.`;
+  } else {
+    histEl.style.display='none'; catEl.style.display='block';
+    const counts = {};
+    feats.forEach(f => {
+      let v = f.properties[col];
+      if(theme.kind==='binary'){
+        const yes = v===true || v==='True' || v===1;
+        v = yes ? (pal.labelYes||'Yes') : (pal.labelNo||'No');
+      } else {
+        v = (v===null||v===undefined||v==='') ? 'NA' : String(v);
+      }
+      counts[v] = (counts[v]||0)+1;
+    });
+    const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const colors = entries.map((_,i)=> (pal.ramp||PAL.structure)[i % (pal.ramp||PAL.structure).length]);
+    // binary: force semantic colours
+    if(theme.kind==='binary' && entries.length){
+      entries.forEach((e,i)=>{
+        if(e[0]===(pal.labelYes||'Yes')) colors[i]=pal.yes;
+        if(e[0]===(pal.labelNo||'No')) colors[i]=pal.no;
+      });
     }
-    return true;
-  });
+    STATE.chartCat = new Chart(catEl, {
+      type:'doughnut',
+      data:{labels:entries.map(e=>e[0].slice(0,28)), datasets:[{data:entries.map(e=>e[1]), backgroundColor:colors, borderWidth:1}]},
+      options:{plugins:{legend:{position:'bottom', labels:{boxWidth:10, font:{size:9}}}}, maintainAspectRatio:false}
+    });
+    note.textContent = `Class frequencies for ${col} (top ${entries.length}).`;
+  }
 }
 
 function bindPopup(theme, feat, layer){
@@ -684,13 +827,18 @@ function redrawLayer(){
   const mode = STATE.geomMode || 'points';
   const stylePoly = (feat) => {
     const c = colorFor(theme, feat.properties||{});
-    return {color:'#ffffff', weight:0.4, fillColor:c, fillOpacity:0.72};
+    return {color:'#ffffff', weight:0.35, fillColor:c, fillOpacity:0.7};
   };
   const pointLayer = (feat, latlng) => {
-    const c = colorFor(theme, feat.properties||{});
+    const props = feat.properties||{};
+    const c = colorFor(theme, props);
+    const r = radiusFor(theme, props);
     return L.circleMarker(latlng, {
-      radius: theme.kind==='continuous' ? 4 : 4.5,
-      color: c, fillColor: c, fillOpacity: 0.85, weight: 0.6
+      radius: r,
+      color: '#0f172a',
+      fillColor: c,
+      fillOpacity: 0.88,
+      weight: 0.45
     });
   };
 
@@ -714,22 +862,19 @@ function redrawLayer(){
     : (mode === 'points_on_voronoi' ? 'Polygons + points' : 'Points');
   document.getElementById('themeTitle').textContent = theme.title;
   document.getElementById('themeBlurb').textContent =
-    (theme.blurb || '') + ` · Representation: ${modeLabel}`;
+    (theme.blurb || '') + ` · Representation: ${modeLabel} · size varies with value`;
   renderLegend(theme);
+  renderCharts(theme, pts);
   renderKpis();
 }
 
 function fillThemeList(){
   const root = document.getElementById('themeList');
   const themes = STATE.data.themes || [];
-  let html = '';
-  let last = null;
+  let html = '', last = null;
   themes.forEach(t => {
-    if(t.kind === 'special_plots') return; // single-map dashboard uses SU points for all themes
-    if(t.category !== last){
-      html += `<div class="cat">${t.category}</div>`;
-      last = t.category;
-    }
+    if(t.kind === 'special_plots') return;
+    if(t.category !== last){ html += `<div class="cat">${t.category}</div>`; last = t.category; }
     const ico = ICONS[t.category] || '📊';
     html += `<button class="theme" data-id="${t.id}">
       <div class="ico">${ico}</div>
@@ -746,20 +891,14 @@ function fillThemeList(){
     });
   });
   const first = root.querySelector('.theme');
-  if(first){
-    first.classList.add('active');
-    STATE.themeId = first.dataset.id;
-  }
+  if(first){ first.classList.add('active'); STATE.themeId = first.dataset.id; }
 }
 
 function fillAdminNames(){
   const sel = document.getElementById('adminName');
   const level = STATE.adminLevel;
   sel.innerHTML = '<option value="">All</option>';
-  if(level === 'national'){
-    sel.disabled = true;
-    return;
-  }
+  if(level === 'national'){ sel.disabled = true; return; }
   sel.disabled = false;
   const rows = level === 'region' ? (STATE.data.by_region||[]) : (STATE.data.by_governorate||[]);
   rows.forEach(r => {
@@ -770,7 +909,61 @@ function fillAdminNames(){
   });
 }
 
-// Map init
+/* Drag panels */
+function enableDrag(id){
+  const el = document.getElementById(id);
+  const hd = el.querySelector('.hd');
+  let ox=0, oy=0, dragging=false;
+  hd.addEventListener('pointerdown', (e) => {
+    if(e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    const rect = el.getBoundingClientRect();
+    const parent = el.parentElement.getBoundingClientRect();
+    ox = e.clientX - rect.left; oy = e.clientY - rect.top;
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.left = (rect.left - parent.left) + 'px';
+    el.style.top = (rect.top - parent.top) + 'px';
+    hd.setPointerCapture(e.pointerId);
+  });
+  hd.addEventListener('pointermove', (e) => {
+    if(!dragging) return;
+    const parent = el.parentElement.getBoundingClientRect();
+    el.style.left = Math.max(0, e.clientX - parent.left - ox) + 'px';
+    el.style.top = Math.max(0, e.clientY - parent.top - oy) + 'px';
+  });
+  hd.addEventListener('pointerup', () => { dragging=false; });
+}
+['themeInfo','basemapPanel','legendPanel','chartPanel'].forEach(enableDrag);
+document.querySelectorAll('[data-min]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.getAttribute('data-min');
+    const bd = document.getElementById(id + 'Bd') || document.getElementById(id === 'legendPanel' ? 'legend' : id+'Bd');
+    const target = id === 'legendPanel' ? document.getElementById('legend') : document.getElementById(id+'Bd');
+    if(!target) return;
+    target.style.display = target.style.display === 'none' ? '' : 'none';
+  });
+});
+
+document.getElementById('btnToggleLegend').onclick = () => {
+  const p = document.getElementById('legendPanel');
+  p.style.display = p.style.display === 'none' ? '' : 'none';
+};
+document.getElementById('btnToggleCharts').onclick = () => {
+  const p = document.getElementById('chartPanel');
+  p.style.display = p.style.display === 'none' ? '' : 'none';
+};
+document.getElementById('btnFullscreen').onclick = () => {
+  const wrap = document.getElementById('mapwrap');
+  const shell = document.getElementById('shell');
+  if(!document.fullscreenElement){
+    wrap.requestFullscreen?.() || shell.classList.add('fs-map');
+    setTimeout(()=>MAP.invalidateSize(), 200);
+  } else {
+    document.exitFullscreen?.();
+  }
+};
+document.addEventListener('fullscreenchange', () => setTimeout(()=>MAP.invalidateSize(), 150));
+
 const MAP = L.map('map', {zoomControl:true}).setView([23.5, 45.0], 6);
 const layers = {
   esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution:'Esri', maxZoom:19}),
@@ -787,23 +980,11 @@ document.getElementById('bmHybrid').onchange = () => { if(document.getElementByI
 document.getElementById('lblPlaces').onchange = (e) => { e.target.checked ? layers.places.addTo(MAP) : MAP.removeLayer(layers.places); };
 
 document.getElementById('adminLevel').addEventListener('change', (e) => {
-  STATE.adminLevel = e.target.value;
-  STATE.adminName = '';
-  fillAdminNames();
-  redrawLayer();
+  STATE.adminLevel = e.target.value; STATE.adminName = ''; fillAdminNames(); redrawLayer();
 });
-document.getElementById('adminName').addEventListener('change', (e) => {
-  STATE.adminName = e.target.value;
-  redrawLayer();
-});
-document.getElementById('searchBox').addEventListener('input', (e) => {
-  STATE.search = e.target.value;
-  redrawLayer();
-});
-document.getElementById('geomMode').addEventListener('change', (e) => {
-  STATE.geomMode = e.target.value;
-  redrawLayer();
-});
+document.getElementById('adminName').addEventListener('change', (e) => { STATE.adminName = e.target.value; redrawLayer(); });
+document.getElementById('searchBox').addEventListener('input', (e) => { STATE.search = e.target.value; redrawLayer(); });
+document.getElementById('geomMode').addEventListener('change', (e) => { STATE.geomMode = e.target.value; redrawLayer(); });
 
 document.querySelectorAll('nav.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -812,10 +993,11 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     if(btn.dataset.tab === 'reports'){
       window.open('../documents/NFI_national_geopipeline_report.html', '_blank');
     } else if(btn.dataset.tab === 'about'){
-      alert('KSA NFI National Atlas\\nProvisional sample metrics from the national tabular universe.\\nAdmin levels: National, Region, Governorate (province).\\nNumbers are computed from atlas_data.json only.');
+      alert('KSA NFI National Atlas\\nSemantic colours: green=living vegetation; brown=deadwood/stumps; red/orange=fire; purple=disease/agents.\\nDrag legend and charts. Fullscreen via ⛶.');
     } else if(btn.dataset.tab === 'analytics'){
-      const k = kpiSource();
-      alert('Analytics snapshot (current scope)\\nSU: '+k.n_su+'\\nTree presence %: '+fmt(k.tree_presence_pct,1)+'\\nShrub presence %: '+fmt(k.shrub_presence_pct,1)+'\\nMean DBH: '+fmt(k.mean_dbh_cm,1)+'\\nAGB sum Mg: '+fmt(k.sum_tree_agb_mg,1));
+      const p = document.getElementById('chartPanel');
+      p.style.display = '';
+      p.scrollIntoView({block:'nearest'});
     }
   });
 });
