@@ -497,10 +497,15 @@ def run_national_pipeline(cfg: dict, out_root: Path | None = None) -> dict[str, 
         fig_paths=fig_paths,
         map_paths=map_paths,
         out_root=OUT,
+        tables=tables,
+        tree_m=tree_m,
+        shrub_m=shrub_m,
     )
     run_summary["html_report"] = html_products.get("html_report")
     run_summary["html_atlas_index"] = html_products.get("atlas_index")
     run_summary["interactive_maps"] = html_products.get("interactive_maps")
+    run_summary["n_interactive_themes"] = html_products.get("n_interactive_themes")
+    run_summary["n_static_themes"] = html_products.get("n_static_themes")
 
     (OUT / "logs" / "national_run_summary.json").write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
     return {

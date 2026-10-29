@@ -242,36 +242,46 @@ def write_national_interactive_maps(
     return paths
 
 
-def write_national_html_atlas(map_paths: dict[str, str], out_dir: Path) -> Path:
+def write_national_html_atlas(
+    map_paths: dict[str, str],
+    out_dir: Path,
+    catalog: pd.DataFrame | None = None,
+) -> Path:
     """Portal index that embeds interactive national Leaflet maps in an iframe."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    # Copy or reference maps from interactive folder via relative links
-    themes = [
-        ("plots", "National plots", "Clustered validated plot coordinates on imagery basemaps."),
-        ("tree_presence", "Tree presence gate", "SU points coloured by whether any tree records exist."),
-        ("tree_carbon", "Provisional tree carbon", "SU mean sample tree carbon (not design-based)."),
-        ("shrub_carbon", "Provisional shrub carbon", "SU mean sample shrub carbon (calc DOCX)."),
-    ]
+
+    # Prefer catalog order when provided; else fall back to map_paths keys
+    themes: list[tuple[str, str, str, str]] = []
+    if catalog is not None and len(catalog):
+        for _, r in catalog.iterrows():
+            key = str(r["theme_id"])
+            if key not in map_paths:
+                continue
+            themes.append((
+                key,
+                str(r.get("title") or key),
+                str(r.get("blurb") or ""),
+                str(r.get("category") or "Themes"),
+            ))
+    else:
+        for key in map_paths:
+            themes.append((key, key.replace("_", " ").title(), "", "Themes"))
+
     cards = []
     first_src = None
-    for key, title, blurb in themes:
-        if key not in map_paths:
-            continue
+    last_cat = None
+    for key, title, blurb, category in themes:
         src = Path(map_paths[key])
-        # Prefer relative name if file was written into out_dir or sibling
-        rel = src.name
-        # If map lives in sibling folder, use relative path from atlas dir
         try:
             rel = str(src.resolve().relative_to(out_dir.resolve()))
         except ValueError:
-            # maps/html_interactive vs maps/html_atlas
-            try:
-                rel = str(Path("..") / "html_interactive" / src.name)
-            except Exception:
-                rel = src.as_uri()
+            rel = str(Path("..") / "html_interactive" / src.name)
         if first_src is None:
             first_src = rel
+        if category != last_cat:
+            cards.append(f'<div class="cat">{_esc(category)}</div>')
+            last_cat = category
         cards.append(
             f'<button class="theme" data-src="{_esc(rel)}" type="button">'
             f"<strong>{_esc(title)}</strong><span>{_esc(blurb)}</span></button>"
@@ -293,6 +303,7 @@ border-left:4px solid #404040;border-radius:8px;background:#fff;cursor:pointer}}
 .theme strong{{display:block;font-size:13px}}
 .theme span{{display:block;font-size:11px;color:#525252;margin-top:4px}}
 .theme.active{{border-left-color:#0072B2;background:#f0f7fb}}
+.cat{{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#525252;margin:14px 0 6px;font-weight:700}}
 iframe{{border:0;flex:1;width:100%}}
 .bar{{padding:8px 12px;border-bottom:1px solid #d4d4d4;font-size:12px;background:#fff}}
 </style>
@@ -300,7 +311,7 @@ iframe{{border:0;flex:1;width:100%}}
 <body>
 <aside>
   <h1>KSA NFI National Atlas</h1>
-  <div class="sub">Interactive Leaflet maps. Entire-country tabular frame. Carbon layers are provisional sample metrics.</div>
+  <div class="sub">Thematic interactive Leaflet maps for the entire-country tabular frame. Biomass and carbon themes are provisional sample metrics.</div>
   {''.join(cards)}
 </aside>
 <main>
@@ -419,12 +430,36 @@ def write_national_html_report(
             fig_block += _img_tag(fig_paths[key], title)
 
     map_block = ""
-    for key, title in [
+    # Prefer a curated subset so the report stays readable; full set lives in the atlas
+    preferred_map_keys = [
         ("map_national_plots", "National plots (static)"),
         ("map_national_su_mean_tree_carbon", "SU mean provisional tree carbon (static)"),
-    ]:
+        ("thematic_tree_count", "Thematic: tree count"),
+        ("thematic_species_richness", "Thematic: species richness"),
+        ("thematic_mean_dbh", "Thematic: mean DBH"),
+        ("thematic_sum_agb", "Thematic: tree AGB"),
+        ("thematic_sum_carbon", "Thematic: tree carbon"),
+        ("thematic_land_use", "Thematic: modal land use"),
+        ("thematic_tree_canopy", "Thematic: tree canopy"),
+        ("thematic_fire_presence", "Thematic: fire evidence"),
+        ("thematic_deadwood_presence", "Thematic: deadwood"),
+        ("thematic_regen_count", "Thematic: regeneration"),
+        ("thematic_tree_condition", "Thematic: tree condition"),
+        ("thematic_region", "Thematic: region"),
+    ]
+    for key, title in preferred_map_keys:
         if key in map_paths:
             map_block += _img_tag(map_paths[key], title)
+    # Any remaining thematic_* not already shown
+    shown = {k for k, _ in preferred_map_keys}
+    extra = 0
+    for key, path in map_paths.items():
+        if key in shown or not str(key).startswith("thematic_"):
+            continue
+        if extra >= 8:
+            break
+        map_block += _img_tag(path, key.replace("thematic_", "Thematic: ").replace("_", " "))
+        extra += 1
 
     open_items = [
         ("National Area_H", "Only Asir and Makkah grids attach Area_H in this workspace."),
@@ -635,19 +670,39 @@ def produce_national_html_products(
     fig_paths: dict,
     map_paths: dict,
     out_root: Path,
+    tables: dict | None = None,
+    tree_m: pd.DataFrame | None = None,
+    shrub_m: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Write interactive maps, atlas portal, and HTML report. Returns path dict."""
+    """Write thematic interactive maps, atlas portal, and HTML report. Returns path dict."""
     out_root = Path(out_root)
-    imap_dir = out_root / "maps" / "html_interactive"
     atlas_dir = out_root / "maps" / "html_atlas"
     docs_dir = out_root / "documents"
     docs_dir.mkdir(parents=True, exist_ok=True)
 
-    interactive = write_national_interactive_maps(
-        plot, cfg, lattice, su_metrics, imap_dir
-    )
-    # Also place copies/links usable from atlas: write atlas index with relative refs
-    atlas_index = write_national_html_atlas(interactive, atlas_dir)
+    from nfi_national_thematic_maps import produce_national_thematic_maps
+
+    thematic = {"interactive": {}, "static": {}, "catalog": pd.DataFrame()}
+    if tables is not None and tree_m is not None and shrub_m is not None:
+        thematic = produce_national_thematic_maps(
+            tables=tables,
+            tree_m=tree_m,
+            shrub_m=shrub_m,
+            lattice=lattice,
+            plot=plot,
+            cfg=cfg,
+            out_root=out_root,
+        )
+        interactive = thematic["interactive"]
+        catalog = thematic["catalog"]
+    else:
+        # Fallback: legacy four-map set
+        interactive = write_national_interactive_maps(
+            plot, cfg, lattice, su_metrics, out_root / "maps" / "html_interactive"
+        )
+        catalog = None
+
+    atlas_index = write_national_html_atlas(interactive, atlas_dir, catalog=catalog)
 
     def _read_csv(path: Path) -> pd.DataFrame | None:
         return pd.read_csv(path) if path.exists() else None
@@ -658,6 +713,11 @@ def produce_national_html_products(
     uni_shrubs = _read_csv(audit / "univariate_national_shrubs_fv.csv")
     biv_s = _read_csv(eda / "bivariate_spearman_trees_national.csv")
     biv_p = _read_csv(eda / "bivariate_pearson_trees_national.csv")
+
+    # Merge static thematic PNGs into map_paths for the report gallery
+    map_paths = dict(map_paths or {})
+    for k, v in (thematic.get("static") or {}).items():
+        map_paths[f"thematic_{k}"] = v
 
     report = write_national_html_report(
         out_path=docs_dir / "NFI_national_geopipeline_report.html",
@@ -679,8 +739,12 @@ def produce_national_html_products(
     )
     manifest = {
         "interactive_maps": interactive,
+        "static_thematic_maps": thematic.get("static") or {},
+        "n_interactive_themes": len(interactive),
+        "n_static_themes": len(thematic.get("static") or {}),
         "atlas_index": str(atlas_index),
         "html_report": str(report),
+        "thematic_catalog": str(out_root / "maps" / "national_thematic_catalog.csv"),
     }
     (docs_dir / "national_html_manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"

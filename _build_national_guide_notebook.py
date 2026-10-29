@@ -650,32 +650,52 @@ for name, path in MAP_PATHS.items():
     )
 
     c.append(md("""<a id="s14"></a>
-## 14 · Interactive Leaflet HTML maps + atlas portal
+## 14 · Thematic interactive maps + atlas portal
 
-**User note:** This is the interactive map production step. Writes Folium/Leaflet HTML with Esri/Google basemaps:
-- national plots (clustered)
-- tree-presence gate at SU points
-- provisional tree carbon
-- provisional shrub carbon (when available)
+**User note:** Builds a **full thematic atlas** from the national tables (not just carbon):
+structure (counts, DBH, height, volume, basal area), biomass/carbon, shrubs, land use, vegetation cover, fire, environmental problems, deadwood, regeneration, tree health, regions, coordinate QA.
 
-Then builds an **atlas portal** (`maps/html_atlas/index.html`) so you can switch themes in one browser tab.
+Outputs:
+- Interactive Leaflet HTML per theme under `maps/html_interactive/`
+- Static PNG companions under `maps/national/thematic/`
+- Atlas portal `maps/html_atlas/index.html` (theme switcher)
 """))
     c.append(
         code(
-            r"""IMAP_DIR = OUT / "maps" / "html_interactive"
-ATLAS_DIR = OUT / "maps" / "html_atlas"
-INTERACTIVE = write_national_interactive_maps(
-    plot, CFG, LATTICE, ROLLED["su_metrics"], IMAP_DIR
+            r"""from nfi_national_thematic_maps import produce_national_thematic_maps
+
+THEMATIC = produce_national_thematic_maps(
+    tables=TABLES,
+    tree_m=TREE_M,
+    shrub_m=SHRUB_M,
+    lattice=LATTICE,
+    plot=plot,
+    cfg=CFG,
+    out_root=OUT,
 )
-ATLAS_INDEX = write_national_html_atlas(INTERACTIVE, ATLAS_DIR)
+INTERACTIVE = THEMATIC["interactive"]
+ATLAS_INDEX = write_national_html_atlas(
+    INTERACTIVE, OUT / "maps" / "html_atlas", catalog=THEMATIC["catalog"]
+)
 HTML_PRODUCTS["interactive_maps"] = INTERACTIVE
+HTML_PRODUCTS["static_thematic_maps"] = THEMATIC["static"]
 HTML_PRODUCTS["atlas_index"] = str(ATLAS_INDEX)
 
-display(Markdown("### Interactive map files"))
+display(Markdown("### Thematic catalog"))
+display(THEMATIC["catalog"])
+display(Markdown(f"### Interactive themes written: **{len(INTERACTIVE)}**"))
 display(pd.DataFrame([{"theme": k, "path": v} for k, v in INTERACTIVE.items()]))
+display(Markdown("### Sample static thematic maps"))
+shown = 0
+for theme, path in THEMATIC["static"].items():
+    if shown >= 8:
+        break
+    p = Path(path)
+    if p.exists():
+        display(Markdown(f"**{theme}**"))
+        display(Image(filename=str(p)))
+        shown += 1
 print("Atlas portal:", ATLAS_INDEX)
-
-# Embed atlas in notebook when the file is local (may be blank in some remote viewers)
 try:
     display(IFrame(src=ATLAS_INDEX.as_uri(), width="100%", height=640))
 except Exception as e:
