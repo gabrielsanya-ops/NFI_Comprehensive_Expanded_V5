@@ -172,16 +172,21 @@ def write_national_dashboard_atlas(
     out_dir: Path,
     catalog: pd.DataFrame | None = None,
 ) -> Path:
-    """Write dashboard atlas: index.html + atlas_data.json."""
+    """Write dashboard atlas: index.html (+ embedded data) and atlas_data.json."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = build_atlas_payload(themes_df, catalog=catalog)
     data_path = out_dir / "atlas_data.json"
-    data_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    raw = json.dumps(payload, ensure_ascii=False)
+    data_path.write_text(raw, encoding="utf-8")
 
-    # Keep payload reference relative for file:// and http servers
+    # Embed JSON so file:// open works without a local web server / CORS issues
     index = out_dir / "index.html"
-    index.write_text(_DASHBOARD_HTML, encoding="utf-8")
+    html = _DASHBOARD_HTML.replace(
+        "/*__ATLAS_DATA_PLACEHOLDER__*/",
+        f"window.ATLAS_DATA = {raw};",
+    )
+    index.write_text(html, encoding="utf-8")
     return index
 
 
@@ -706,23 +711,29 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
   });
 });
 
-fetch('atlas_data.json')
-  .then(r => r.json())
-  .then(data => {
-    STATE.data = data;
-    fillThemeList();
-    fillAdminNames();
-    redrawLayer();
-    const feats = data.geojson.features || [];
-    if(feats.length){
-      const b = L.geoJSON(data.geojson).getBounds();
-      if(b.isValid()) MAP.fitBounds(b.pad(0.05));
-    }
-  })
-  .catch(err => {
-    document.getElementById('themeTitle').textContent = 'Failed to load atlas_data.json';
-    document.getElementById('themeBlurb').textContent = String(err);
-  });
+function boot(data){
+  STATE.data = data;
+  fillThemeList();
+  fillAdminNames();
+  redrawLayer();
+  const feats = data.geojson.features || [];
+  if(feats.length){
+    const b = L.geoJSON(data.geojson).getBounds();
+    if(b.isValid()) MAP.fitBounds(b.pad(0.05));
+  }
+}
+/*__ATLAS_DATA_PLACEHOLDER__*/
+if(window.ATLAS_DATA){
+  boot(window.ATLAS_DATA);
+} else {
+  fetch('atlas_data.json')
+    .then(r => r.json())
+    .then(boot)
+    .catch(err => {
+      document.getElementById('themeTitle').textContent = 'Failed to load atlas data';
+      document.getElementById('themeBlurb').textContent = String(err);
+    });
+}
 </script>
 </body>
 </html>
