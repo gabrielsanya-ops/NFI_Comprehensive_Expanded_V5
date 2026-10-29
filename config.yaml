@@ -1,8 +1,11 @@
 project:
   name: KSA_NFI_GeoAI_Comprehensive_Expanded_V5
-  mode: audit_first_then_expand
-  case_study: Aseer_Asir_analytical_grid_plus_national_LULC
-  scope_note: Preserves V4_Refined Asir GeoAI depth; expands with national LULC Validation and Word calc biomass.
+  mode: national_first_then_regional_gis
+  case_study: National_KSA_tabular_universe_with_Asir_Makkah_GIS_where_available
+  scope_note: >
+    National SU/plot tabular universe is the LEFT master (entire country).
+    Asir/Makkah shapefiles attach Area_H only where grids exist; other regions stay AREA_BLOCKED.
+    Word calc DOCX drives tree and shrub biomass; other pools inventoried without invented equations.
   plots_per_su_design: 5
   plot_uid_separator: '-'
   random_seed: 42
@@ -18,6 +21,7 @@ paths:
   calculation_docx: data/docs/NFI_ KSA Calculation_Trees&shrubs.docx
   calc_extract: data/docs/_calc_doc_extract.md
   output_root: outputs
+  output_national_root: outputs_national_v5
 
 tables:
   su: data/cleansed/nfi_of_ksa_program_su.xlsx

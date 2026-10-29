@@ -18,6 +18,9 @@
 - Modules: `nfi_lulc_html.py`, `nfi_calc_biomass.py`, `nfi_missingness_expanded.py`, `nfi_esda_expanded.py`.
 - Docs: comparison matrix, gap analysis, methodology inventory, assumptions, this changelog.
 - LULC validated CSV + confusion/accuracy assets + calc document.
+- **Part C national-first geopipeline** (`src/nfi_national_pipeline.py`, `run_national_pipeline.py`, `apply_shrub_metrics`, `outputs_national_v5/`, notebook N0-N3). Frame = entire national SU master (3671 SUs / 18355 lattice plots / 13 regions). Tree + shrub calc-doc biomass; ancillary pools inventoried without invented equations; Area_H only where Asir/Makkah grids exist.
+- **User-guide notebook** `NFI_National_GeoPipeline_Guide_V5.ipynb` (sections 0-18 + appendices, user notes and TOC). Builder `_build_national_guide_notebook.py`. Archive `NFI_GeoAI_Comprehensive_Expanded_V5.ipynb` kept intact.
+- **National HTML products** via `src/nfi_national_html.py`: interactive Leaflet maps (`maps/html_interactive/`), atlas portal (`maps/html_atlas/index.html`), shareable report (`documents/NFI_national_geopipeline_report.html`). Wired into `run_national_pipeline` and guide Sections 14-15.
 
 ## Conditionally excluded / not silently dropped
 

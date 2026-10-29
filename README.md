@@ -2,29 +2,42 @@
 
 Comprehensive expansion of the original GeoAI notebook. **Not a replacement with a smaller demo.**
 
-## Where is the revised notebook?
+## Where are the notebooks?
 
-`F:\1.KSA\29.NFI\12.NFI_Comprehensive_Expanded_V5\NFI_GeoAI_Comprehensive_Expanded_V5.ipynb`
+**Start here (national user guide):**  
+`NFI_National_GeoPipeline_Guide_V5.ipynb`  
+Clear section structure, user notes before each step, entire-country frame.
 
-Foundation preserved from:
+**Archive / deep-dive (Part A Asir + Part B LULC + Part C):**  
+`NFI_GeoAI_Comprehensive_Expanded_V5.ipynb`  
+Preserves the full V4_Refined analytical depth.
 
+Rebuild the guide anytime: `python _build_national_guide_notebook.py`
+
+Foundation preserved from:  
 `F:\1.KSA\29.NFI\KSA_NFI_GeoAI_Data_Preparation_Cursor\nfi_geoai_data_preparation\NFI_GeoAI_Data_Preparation_V4_Refined.ipynb`
 
-## How to run
+## How to run (national-first)
 
-1. Open the V5 notebook in Jupyter / VS Code / Colab (upload package or clone).
-2. Run **Part A** cells (preserved V4 workflow). Requires Asir shapefiles + cleansed Excel under paths in `config.yaml`.
-3. Run **Part B** expansion cells (LULC HTML + Word calc + ESDA/ML extras).
+Entire-country tabular universe (all regions in the SU master):
 
 ```bash
 pip install -r requirements.txt
-# optional for Moran/Gi*:
-pip install libpysal esda
+python run_national_pipeline.py
+# outputs -> outputs_national_v5/
 python -m pytest tests -q
 ```
 
+Or open `NFI_National_GeoPipeline_Guide_V5.ipynb` and run Sections 0 to 17 (or Section 16 one-shot).
+
+HTML products after a run:
+- Report: `outputs_national_v5/documents/NFI_national_geopipeline_report.html`
+- Interactive atlas: `outputs_national_v5/maps/html_atlas/index.html`
+- Leaflet maps: `outputs_national_v5/maps/html_interactive/`
+
 ## Docs
 
+- `../docs/04_national_pipeline.md` (national phase)
 - `docs/COMPARISON_MATRIX.md`
 - `docs/GAP_ANALYSIS.md`
 - `docs/METHODOLOGY_INVENTORY.md`

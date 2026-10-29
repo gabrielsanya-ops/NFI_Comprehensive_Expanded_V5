@@ -4,5 +4,10 @@
 .ipynb_checkpoints/
 .venv/
 outputs/
+outputs_national_v5/**
+!outputs_national_v5/README.md
 _assemble_expanded_notebook.py
 _prep_colab.py
+_smoke_*.py
+_colab_smoke_run.py
+_fix_su_key_path_bug.py

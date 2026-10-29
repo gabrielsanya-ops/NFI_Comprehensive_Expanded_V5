@@ -25,3 +25,20 @@ def test_chain():
 
 def test_shrub():
     assert float(shrub_agb_mg(1.0, 100.0)) > 0
+
+
+def test_apply_shrub_metrics():
+    import pandas as pd
+    from nfi_calc_biomass import apply_shrub_metrics
+    df = pd.DataFrame({
+        "crown_diam1": [1.0, 2.0],
+        "crown_diam2": [1.0, 2.0],
+        "sh_height": [1.5, 2.0],
+        "sh_height_unit_name": [None, None],
+        "tree_species_scientific_name": ["Acacia", "grass"],
+    })
+    out = apply_shrub_metrics(df)
+    assert len(out) == 2
+    assert "agb_mg" in out.columns
+    assert out["height_cm"].iloc[0] == 150.0
+    assert out["agb_mg"].notna().all()

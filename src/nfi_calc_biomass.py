@@ -77,6 +77,79 @@ def shrub_agb_mg(mean_cd_m, height_cm):
     return raw / 1000.0
 
 
+def _pick_col(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
+    lower = {c.lower(): c for c in df.columns}
+    for cand in candidates:
+        if cand.lower() in lower:
+            return lower[cand.lower()]
+    for c in df.columns:
+        cl = c.lower()
+        for cand in candidates:
+            if cand.lower() in cl:
+                return c
+    return None
+
+
+def shrub_height_to_cm(height: pd.Series, unit_name: pd.Series | None = None) -> pd.Series:
+    """Convert shrub height to cm per calc extract (H = tree_height_cm from metres).
+
+    When unit is missing, values with median < 20 are treated as metres (x100).
+    """
+    h = pd.to_numeric(height, errors="coerce")
+    out = h.copy()
+    if unit_name is not None:
+        u = unit_name.astype(str).str.lower()
+        is_m = u.str.contains("m", na=False) & ~u.str.contains("cm", na=False)
+        is_cm = u.str.contains("cm", na=False)
+        out = np.where(is_cm, h, np.where(is_m, h * 100.0, out))
+        out = pd.Series(out, index=height.index, dtype=float)
+        unknown = ~(is_m | is_cm)
+        if unknown.any():
+            med = h.loc[unknown].median(skipna=True)
+            if pd.notna(med) and med < 20:
+                out.loc[unknown] = h.loc[unknown] * 100.0
+            else:
+                out.loc[unknown] = h.loc[unknown]
+        return out
+    med = h.median(skipna=True)
+    if pd.notna(med) and med < 20:
+        return h * 100.0
+    return h
+
+
+def apply_shrub_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply Word-doc shrub AGB/BGB/carbon chain (provisional per-individual).
+
+    Field names in cleansed shrubs_bushes.xlsx: crown_diam1, crown_diam2, sh_height.
+    Calc extract also names crown_diameterl1 / crown_diameterl2 / tree_height_cm.
+    """
+    out = df.copy()
+    cd1 = _pick_col(out, ("crown_diam1", "crown_diameterl1", "crown_diameter1"))
+    cd2 = _pick_col(out, ("crown_diam2", "crown_diameterl2", "crown_diameter2"))
+    ht = _pick_col(out, ("sh_height", "tree_height_cm", "tree_height", "height"))
+    unit = _pick_col(out, ("sh_height_unit_name", "height_unit", "sh_height_unit"))
+    if cd1 is None or cd2 is None or ht is None:
+        raise KeyError(
+            "apply_shrub_metrics needs crown diameter pair and height columns; "
+            f"found cd1={cd1}, cd2={cd2}, ht={ht}; columns={list(out.columns)}"
+        )
+    d1 = pd.to_numeric(out[cd1], errors="coerce")
+    d2 = pd.to_numeric(out[cd2], errors="coerce")
+    out["mean_CD_m"] = (d1 + d2) / 2.0
+    unit_s = out[unit] if unit is not None else None
+    out["height_cm"] = shrub_height_to_cm(out[ht], unit_s)
+    ok = out["mean_CD_m"].gt(0) & out["height_cm"].gt(0)
+    out["agb_mg"] = np.nan
+    out.loc[ok, "agb_mg"] = shrub_agb_mg(out.loc[ok, "mean_CD_m"], out.loc[ok, "height_cm"])
+    out["bgb_mg"] = tree_bgb_mg(out["agb_mg"])
+    out["total_biomass_mg"] = total_biomass_mg(out["agb_mg"], out["bgb_mg"])
+    out["carbon_mg_provisional"] = carbon_mg(out["total_biomass_mg"])
+    # Shrub CO2eq not stated in calc doc; leave blank intentionally.
+    out["co2eq_mg_provisional"] = np.nan
+    out["shrub_metric_ok"] = ok
+    return out.loc[ok].copy()
+
+
 def land_use_proportion_by_su(plot_lulc: pd.DataFrame, su_col: str, class_col: str, plots_per_su: int = 5):
     d = plot_lulc[[su_col, class_col]].copy()
     d[su_col] = d[su_col].astype(str).str.strip()
