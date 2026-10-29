@@ -875,31 +875,177 @@ def plot_missingness_profile(
 
 
 def plot_univariate_grid(df: pd.DataFrame, cols: list[str], out_path: Path, title: str = "Univariate"):
+    """Fancy univariate dashboard: for each metric, hist+KDE, box, violin, strip/scatter."""
     import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    try:
+        import seaborn as sns
+    except ImportError:
+        sns = None
 
     apply_plot_style()
+    cols = [c for c in cols if c in df.columns]
     n = len(cols)
     if n == 0:
         return None
-    ncols = min(3, n)
-    nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4.6 * ncols, 3.5 * nrows))
-    axes = np.array(axes).reshape(-1)
-    for ax, c in zip(axes, cols):
-        s = pd.to_numeric(df[c], errors="coerce").dropna()
-        ax.hist(s, bins=28, color=PALETTE["steel"], alpha=0.88, edgecolor="white", linewidth=0.6)
-        if len(s):
-            ax.axvline(s.median(), color=PALETTE["amber"], ls="--", lw=1.8, label="median")
-            ax.axvline(s.mean(), color=PALETTE["rose"], ls=":", lw=1.8, label="mean")
-        ax.set_title(c, fontsize=10)
-        ax.legend(fontsize=7, loc="upper right")
-    for ax in axes[n:]:
-        ax.axis("off")
-    fig.suptitle(title, fontsize=14, fontweight="bold", y=1.01)
+    accent = FANCY_PANEL_COLORS
+    fig, axes = plt.subplots(n, 4, figsize=(14.5, 3.15 * n), squeeze=False)
+    for i, col in enumerate(cols):
+        s = pd.to_numeric(df[col], errors="coerce").dropna()
+        color = accent[i % len(accent)]
+        cmap = LinearSegmentedColormap.from_list("fade", ["#ffffff", color])
+
+        ax = axes[i, 0]
+        if len(s) >= 5:
+            ax.hist(s, bins=36, color=color, alpha=0.42, edgecolor="white", density=True, zorder=2)
+            if sns is not None:
+                sns.kdeplot(x=s, ax=ax, color=color, lw=2.6, fill=True, alpha=0.28, warn_singular=False, zorder=3)
+            ax.axvline(float(s.median()), color="#f59e0b", ls="--", lw=1.9, label="median", zorder=4)
+            ax.axvline(float(s.mean()), color="#e11d48", ls=":", lw=1.9, label="mean", zorder=4)
+            ax.legend(fontsize=7, loc="upper right", frameon=True, fancybox=True)
+        ax.set_title(f"{col}: hist + KDE", fontsize=10, fontweight="600", color=color, loc="left")
+        ax.set_xlabel(col, fontsize=8)
+
+        ax = axes[i, 1]
+        if len(s) >= 5:
+            bp = ax.boxplot(
+                s.values, vert=True, patch_artist=True, widths=0.55,
+                boxprops=dict(facecolor=color, alpha=0.72, edgecolor="#1e293b", linewidth=1.2),
+                medianprops=dict(color="#fbbf24", linewidth=2.4),
+                whiskerprops=dict(color="#334155", linewidth=1.2),
+                capprops=dict(color="#334155", linewidth=1.2),
+                flierprops=dict(marker="o", markersize=3.5, alpha=0.35, markerfacecolor="#fb7185",
+                                markeredgecolor="none"),
+            )
+        ax.set_xticks([])
+        ax.set_title(f"{col}: boxplot", fontsize=10, fontweight="600", color=color, loc="left")
+        ax.set_ylabel(col, fontsize=8)
+
+        ax = axes[i, 2]
+        if len(s) >= 5:
+            parts = ax.violinplot(s.values, positions=[0], showmeans=True, showmedians=True, showextrema=True)
+            for b in parts["bodies"]:
+                b.set_facecolor(color)
+                b.set_edgecolor("#1e293b")
+                b.set_alpha(0.78)
+            for key in ("cbars", "cmins", "cmaxes", "cmeans", "cmedians"):
+                if key in parts and parts[key] is not None:
+                    parts[key].set_color("#1e293b")
+                    parts[key].set_linewidth(1.2)
+            if "cmeans" in parts and parts["cmeans"] is not None:
+                parts["cmeans"].set_color("#e11d48")
+            if "cmedians" in parts and parts["cmedians"] is not None:
+                parts["cmedians"].set_color("#f59e0b")
+        ax.set_xticks([0])
+        ax.set_xticklabels([str(col)[:22]], fontsize=8)
+        ax.set_title(f"{col}: violin", fontsize=10, fontweight="600", color=color, loc="left")
+
+        ax = axes[i, 3]
+        if len(s) >= 5:
+            sample = s.sample(min(len(s), 2500), random_state=42)
+            rng = np.random.default_rng(42 + i)
+            x = rng.normal(0, 0.12, size=len(sample))
+            norm = (sample - sample.min()) / (sample.max() - sample.min() + 1e-12)
+            sizes = 14 + 55 * norm
+            sc = ax.scatter(
+                x, sample.values, s=sizes, c=sample.values, cmap=cmap,
+                alpha=0.55, edgecolors="white", linewidths=0.25, zorder=3,
+            )
+            plt.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
+        ax.set_xticks([])
+        ax.set_title(f"{col}: strip / bubble", fontsize=10, fontweight="600", color=color, loc="left")
+        ax.set_ylabel(col, fontsize=8)
+
+    fig.suptitle(title, fontsize=14, fontweight="bold", color="#0f172a")
     fig.tight_layout()
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=180, bbox_inches="tight")
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=PALETTE["bg"])
+    plt.close(fig)
+    return out_path
+
+
+def plot_bivariate_scatter_matrix(
+    df: pd.DataFrame,
+    cols: list[str],
+    out_path: Path,
+    *,
+    title: str = "Bivariate scatter matrix",
+    max_points: int = 4000,
+    seed: int = 42,
+) -> Path | None:
+    """Fancy pairwise scatter / density matrix with coloured points and KDE diagonals."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    try:
+        import seaborn as sns
+    except ImportError:
+        sns = None
+
+    apply_plot_style()
+    use = [c for c in cols if c in df.columns]
+    if len(use) < 2:
+        return None
+    sub = df[use].apply(pd.to_numeric, errors="coerce").dropna()
+    if len(sub) < 10:
+        return None
+    if len(sub) > max_points:
+        sub = sub.sample(n=max_points, random_state=seed)
+
+    n = len(use)
+    fig, axes = plt.subplots(n, n, figsize=(3.1 * n, 3.0 * n))
+    accent = FANCY_PANEL_COLORS
+    for i, yi in enumerate(use):
+        for j, xj in enumerate(use):
+            ax = axes[i, j]
+            c_i = accent[i % len(accent)]
+            c_j = accent[j % len(accent)]
+            if i == j:
+                s = sub[yi]
+                ax.hist(s, bins=28, color=c_i, alpha=0.45, edgecolor="white", density=True)
+                if sns is not None:
+                    sns.kdeplot(x=s, ax=ax, color=c_i, lw=2.2, fill=True, alpha=0.25, warn_singular=False)
+                ax.set_yticks([])
+                ax.set_title(yi, fontsize=8, fontweight="600", color=c_i)
+            elif i > j:
+                x = sub[xj].to_numpy()
+                y = sub[yi].to_numpy()
+                cmap = LinearSegmentedColormap.from_list("sc", ["#e0f2fe", c_i, "#0f172a"])
+                # colour by local density rank via hexbin underlay + scatter
+                ax.hexbin(x, y, gridsize=28, cmap=cmap, mincnt=1, linewidths=0, alpha=0.85)
+                ax.scatter(x, y, s=6, c=c_j, alpha=0.18, edgecolors="none")
+                r = float(pd.Series(x).corr(pd.Series(y), method="spearman"))
+                ax.text(
+                    0.04, 0.96, f"rho={r:.2f}", transform=ax.transAxes, ha="left", va="top",
+                    fontsize=7.5, fontweight="700", color="#0f172a",
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"),
+                )
+            else:
+                # upper triangle: compact Pearson annotation cell
+                r_p = float(sub[xj].corr(sub[yi], method="pearson"))
+                r_s = float(sub[xj].corr(sub[yi], method="spearman"))
+                ax.set_facecolor("#f8fafc")
+                ax.text(
+                    0.5, 0.58, f"Pearson\n{r_p:.2f}", ha="center", va="center",
+                    fontsize=11, fontweight="700", color=c_i, transform=ax.transAxes,
+                )
+                ax.text(
+                    0.5, 0.28, f"Spearman\n{r_s:.2f}", ha="center", va="center",
+                    fontsize=10, fontweight="600", color=c_j, transform=ax.transAxes,
+                )
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_color("#cbd5e1")
+            if i == n - 1:
+                ax.set_xlabel(xj, fontsize=8)
+            if j == 0 and i != j:
+                ax.set_ylabel(yi, fontsize=8)
+    fig.suptitle(title, fontsize=13, fontweight="bold", color="#0f172a")
+    fig.tight_layout()
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=PALETTE["bg"])
     plt.close(fig)
     return out_path
 
@@ -1765,6 +1911,7 @@ def plot_metric_distribution_suite(
 ) -> dict:
     """For each numeric metric: histogram+KDE, boxplot, violin, strip/bubble panel."""
     import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
     try:
         import seaborn as sns
     except ImportError:
@@ -1775,59 +1922,78 @@ def plot_metric_distribution_suite(
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {}
     cols = [c for c in cols if c in df.columns]
-    for col in cols:
+    for idx, col in enumerate(cols):
         s = pd.to_numeric(df[col], errors="coerce").dropna()
         if len(s) < 5:
             continue
+        color = FANCY_PANEL_COLORS[idx % len(FANCY_PANEL_COLORS)]
+        cmap = LinearSegmentedColormap.from_list("fade", ["#ffffff", color, "#0f172a"])
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(col))
-        fig, axes = plt.subplots(2, 2, figsize=(11, 8.2))
+        fig, axes = plt.subplots(2, 2, figsize=(11.2, 8.4))
 
         ax = axes[0, 0]
-        ax.hist(s, bins=40, color=PALETTE["steel"], alpha=0.55, edgecolor="white", density=True, zorder=2)
+        ax.hist(s, bins=40, color=color, alpha=0.45, edgecolor="white", density=True, zorder=2)
         if sns is not None:
             sns.kdeplot(
-                x=s, ax=ax, color=PALETTE["curve2"], lw=2.4, fill=True,
-                alpha=0.22, warn_singular=False, zorder=3,
+                x=s, ax=ax, color=color, lw=2.6, fill=True,
+                alpha=0.28, warn_singular=False, zorder=3,
             )
-            sns.kdeplot(x=s, ax=ax, color=PALETTE["curve"], lw=2.6, warn_singular=False, zorder=4)
-        ax.axvline(s.median(), color=PALETTE["amber"], ls="--", lw=1.8, label="median", zorder=5)
-        ax.axvline(s.mean(), color=PALETTE["rose"], ls=":", lw=1.8, label="mean", zorder=5)
-        ax.legend(loc="upper right", fontsize=8)
-        ax.set_title(f"{col}: histogram + density curve")
+            sns.kdeplot(x=s, ax=ax, color="#0ea5e9", lw=2.0, warn_singular=False, zorder=4)
+        ax.axvline(s.median(), color="#f59e0b", ls="--", lw=2.0, label="median", zorder=5)
+        ax.axvline(s.mean(), color="#e11d48", ls=":", lw=2.0, label="mean", zorder=5)
+        ax.legend(loc="upper right", fontsize=8, frameon=True)
+        ax.set_title(f"{col}: histogram + KDE", fontweight="600", color=color, loc="left")
         ax.set_xlabel(col)
 
-
         ax = axes[0, 1]
-        bp = ax.boxplot(s.values, vert=True, patch_artist=True, widths=0.45)
-        for box in bp["boxes"]:
-            box.set(facecolor=PALETTE["teal"], alpha=0.65)
-        ax.set_title(f"{col}: boxplot")
+        bp = ax.boxplot(
+            s.values, vert=True, patch_artist=True, widths=0.5,
+            boxprops=dict(facecolor=color, alpha=0.75, edgecolor="#1e293b"),
+            medianprops=dict(color="#fbbf24", linewidth=2.4),
+            whiskerprops=dict(color="#334155"),
+            capprops=dict(color="#334155"),
+            flierprops=dict(marker="o", markersize=3.5, alpha=0.35, markerfacecolor="#fb7185",
+                            markeredgecolor="none"),
+        )
+        ax.set_title(f"{col}: boxplot", fontweight="600", color=color, loc="left")
         ax.set_ylabel(col)
 
         ax = axes[1, 0]
         parts = ax.violinplot(s.values, positions=[0], showmeans=True, showmedians=True, showextrema=True)
         for b in parts["bodies"]:
-            b.set_facecolor(PALETTE["amber"])
-            b.set_alpha(0.7)
+            b.set_facecolor(color)
+            b.set_edgecolor("#1e293b")
+            b.set_alpha(0.8)
+        for key in ("cbars", "cmins", "cmaxes"):
+            if key in parts and parts[key] is not None:
+                parts[key].set_color("#334155")
+        if "cmeans" in parts and parts["cmeans"] is not None:
+            parts["cmeans"].set_color("#e11d48")
+        if "cmedians" in parts and parts["cmedians"] is not None:
+            parts["cmedians"].set_color("#f59e0b")
         ax.set_xticks([0])
         ax.set_xticklabels([str(col)[:24]])
-        ax.set_title(f"{col}: violin")
+        ax.set_title(f"{col}: violin", fontweight="600", color=color, loc="left")
 
         ax = axes[1, 1]
         sample = s.sample(min(len(s), max_strip), random_state=42)
         rng = np.random.default_rng(42)
-        x = rng.normal(0, 0.08, size=len(sample))
-        sizes = 12 + 40 * (sample - sample.min()) / (sample.max() - sample.min() + 1e-12)
-        ax.scatter(x, sample.values, s=sizes, alpha=0.35, c=PALETTE["steel"], edgecolors="none")
+        x = rng.normal(0, 0.1, size=len(sample))
+        sizes = 12 + 50 * (sample - sample.min()) / (sample.max() - sample.min() + 1e-12)
+        sc = ax.scatter(
+            x, sample.values, s=sizes, c=sample.values, cmap=cmap,
+            alpha=0.55, edgecolors="white", linewidths=0.2,
+        )
+        plt.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
         ax.set_xticks([0])
         ax.set_xticklabels(["strip / bubble"])
         ax.set_ylabel(col)
-        ax.set_title(f"{col}: strip (marker size ~ value)")
+        ax.set_title(f"{col}: strip (size and colour ~ value)", fontweight="600", color=color, loc="left")
 
         fig.suptitle(f"Distribution suite: {col}", fontsize=13, fontweight="bold")
         fig.tight_layout()
         path = out_dir / f"{prefix}_dist_{safe}.png"
-        fig.savefig(path, dpi=160, bbox_inches="tight")
+        fig.savefig(path, dpi=180, bbox_inches="tight", facecolor=PALETTE["bg"])
         plt.close(fig)
         paths[col] = str(path)
     return paths

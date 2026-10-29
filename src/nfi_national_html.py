@@ -443,13 +443,19 @@ def write_national_html_report(
 
     fig_block = ""
     for key, title in [
-        ("univariate_trees_national", "Univariate: tree DBH and height (raw field)"),
-        ("univariate_trees_fv_national", "Univariate: tree provisional FV metrics"),
-        ("bivariate_corr_trees_national", "Bivariate: tree Spearman vs Pearson correlations"),
-        ("univariate_shrubs_national", "Univariate: shrub provisional metrics"),
+        ("univariate_trees_national", "Fancy univariate: trees raw field (hist+KDE, box, violin, strip)"),
+        ("univariate_trees_fv_national", "Fancy univariate: tree provisional FV (hist+KDE, box, violin, strip)"),
+        ("univariate_shrubs_national", "Fancy univariate: shrub provisional metrics"),
+        ("bivariate_scatter_trees_national", "Fancy bivariate: tree scatter / density matrix"),
+        ("bivariate_scatter_shrubs_national", "Fancy bivariate: shrub scatter / density matrix"),
+        ("bivariate_corr_trees_national", "Bivariate: tree Spearman vs Pearson heatmaps"),
     ]:
         if key in fig_paths:
             fig_block += _img_tag(fig_paths[key], title)
+    # Per-metric distribution suites (box / violin / KDE)
+    suite_keys = sorted(k for k in fig_paths if str(k).startswith("suite_"))
+    for key in suite_keys[:16]:
+        fig_block += _img_tag(fig_paths[key], f"Distribution suite: {key.replace('suite_', '').replace('_', ' ')}")
 
     flow_fig = _ds_img_block(ds_pack, "flowchart", "Data processing and feature-engineering flowchart")
     miss_figs = (
@@ -663,8 +669,9 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 
 <section id="kde">
   <h2>6. Distributional EDA (histogram + KDE, box, violin, strip)</h2>
-  <p class="lead">Fancy distribution suites for raw field metrics and engineered provisional FV metrics. Each panel embeds histogram with kernel density estimate, boxplot, violin, and strip/bubble view.</p>
-  {kde_block or fig_block or '<p class="note">KDE suites not produced in this run.</p>'}
+  <p class="lead">Fancy coloured distribution suites for raw field metrics and engineered provisional FV metrics. Each panel embeds histogram with kernel density estimate, boxplot, violin, and strip/bubble scatter.</p>
+  {fig_block}
+  {kde_block or '<p class="note">Additional per-metric KDE suites live under figures/national_ds/.</p>'}
 </section>
 
 <section id="thematic-results">
@@ -681,17 +688,16 @@ footer {{ color:var(--muted); font-size:12px; padding:0 0 40px; text-align:cente
 
 <section id="univariate">
   <h2>8. Univariate summary tables</h2>
-  <p class="lead">National provisional tree and shrub metrics (computed).</p>
+  <p class="lead">National provisional tree and shrub metrics (computed). Fancy coloured plots appear in Section 6.</p>
   <h3>Tree provisional metrics</h3>
   {_df_html_table(uni_trees if uni_trees is not None else pd.DataFrame(), max_rows=20)}
   <h3>Shrub provisional metrics</h3>
   {_df_html_table(uni_shrubs if uni_shrubs is not None else pd.DataFrame(), max_rows=20)}
-  {fig_block}
 </section>
 
 <section id="bivariate">
   <h2>9. Bivariate analysis</h2>
-  <p class="lead">Pairwise correlations on provisional tree FV metrics (Spearman and Pearson).</p>
+  <p class="lead">Scatter / density matrices and pairwise correlations on provisional FV metrics (Spearman and Pearson). Fancy coloured plots are embedded in Section 6.</p>
   <h3>Spearman</h3>
   {_df_html_table(biv_spearman if biv_spearman is not None else pd.DataFrame(), max_rows=30)}
   <h3>Pearson</h3>

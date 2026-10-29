@@ -38,7 +38,9 @@ from nfi_datascience import (
     apply_plot_style,
     bivariate_numeric,
     missingness_report,
+    plot_bivariate_scatter_matrix,
     plot_corr_pair,
+    plot_metric_distribution_suite,
     plot_univariate_grid,
     univariate_numeric,
 )
@@ -238,13 +240,28 @@ def write_national_eda_figures(
     raw_cols = [c for c in [dbh, ht] if c in trees.columns]
     if raw_cols:
         paths["univariate_trees_national"] = plot_univariate_grid(
-            trees, raw_cols, out_dir / "univariate_trees_national.png", "National trees: univariate (raw field)"
+            trees, raw_cols, out_dir / "univariate_trees_national.png",
+            "National trees: fancy univariate (raw field) · hist+KDE · box · violin · strip",
         )
-    eng_cols = [c for c in ["basal_area_m2", "volume_m3", "agb_mg", "carbon_mg_provisional"] if c in tree_m.columns]
+        for k, p in plot_metric_distribution_suite(
+            trees, raw_cols, out_dir / "suites_raw", prefix="raw"
+        ).items():
+            paths[f"suite_raw_{k}"] = Path(p)
+    eng_cols = [
+        c for c in [
+            "basal_area_m2", "volume_m3", "agb_mg", "bgb_mg",
+            "carbon_mg_provisional", "co2eq_mg_provisional",
+        ] if c in tree_m.columns
+    ]
     if eng_cols:
         paths["univariate_trees_fv_national"] = plot_univariate_grid(
-            tree_m, eng_cols, out_dir / "univariate_trees_fv_national.png", "National trees: provisional FV metrics"
+            tree_m, eng_cols, out_dir / "univariate_trees_fv_national.png",
+            "National trees: fancy univariate (provisional FV) · hist+KDE · box · violin · strip",
         )
+        for k, p in plot_metric_distribution_suite(
+            tree_m, eng_cols, out_dir / "suites_trees_fv", prefix="tree_fv"
+        ).items():
+            paths[f"suite_tree_fv_{k}"] = Path(p)
         if len(eng_cols) >= 2:
             paths["bivariate_corr_trees_national"] = plot_corr_pair(
                 tree_m,
@@ -252,6 +269,13 @@ def write_national_eda_figures(
                 out_dir / "bivariate_corr_pair_trees_national.png",
                 title="National trees: Spearman vs Pearson (provisional FV)",
             )
+            biv = plot_bivariate_scatter_matrix(
+                tree_m, eng_cols,
+                out_dir / "bivariate_scatter_matrix_trees_national.png",
+                title="National trees: bivariate scatter / density matrix (provisional FV)",
+            )
+            if biv:
+                paths["bivariate_scatter_trees_national"] = biv
             bivariate_numeric(tree_m, eng_cols, method="spearman").to_csv(
                 out_dir / "bivariate_spearman_trees_national.csv"
             )
@@ -261,8 +285,21 @@ def write_national_eda_figures(
     shrub_cols = [c for c in ["mean_CD_m", "height_cm", "agb_mg", "carbon_mg_provisional"] if c in shrub_m.columns]
     if shrub_cols:
         paths["univariate_shrubs_national"] = plot_univariate_grid(
-            shrub_m, shrub_cols, out_dir / "univariate_shrubs_national.png", "National shrubs: provisional metrics"
+            shrub_m, shrub_cols, out_dir / "univariate_shrubs_national.png",
+            "National shrubs: fancy univariate · hist+KDE · box · violin · strip",
         )
+        for k, p in plot_metric_distribution_suite(
+            shrub_m, shrub_cols, out_dir / "suites_shrubs", prefix="shrub"
+        ).items():
+            paths[f"suite_shrub_{k}"] = Path(p)
+        if len(shrub_cols) >= 2:
+            biv_s = plot_bivariate_scatter_matrix(
+                shrub_m, shrub_cols,
+                out_dir / "bivariate_scatter_matrix_shrubs_national.png",
+                title="National shrubs: bivariate scatter / density matrix",
+            )
+            if biv_s:
+                paths["bivariate_scatter_shrubs_national"] = biv_s
     return paths
 
 
