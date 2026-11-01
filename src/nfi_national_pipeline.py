@@ -518,6 +518,31 @@ def run_national_pipeline(cfg: dict, out_root: Path | None = None) -> dict[str, 
         ],
     }
 
+    # Workflow alignment (attached End-to-End Process Flow, nationalized):
+    # integrity scorecard, coord QA, spatial QA, LiDAR evidence gate, GeoAI protocol, GPKG export.
+    from nfi_workflow_e2e import run_workflow_enhancements
+
+    workflow_summary = run_workflow_enhancements(
+        cfg,
+        OUT,
+        tables=tables,
+        lattice=lattice,
+        gate=gate,
+        gate_sh=gate_sh,
+        tree_m=tree_m,
+        shrub_m=shrub_m,
+        su_metrics=rolled["su_metrics"],
+        stages=stages,
+    )
+    run_summary["workflow_e2e"] = {
+        "integrity_score_new_pct": workflow_summary.get("integrity_score_new_pct"),
+        "lidar_evidence_adequate": workflow_summary.get("lidar_evidence_adequate"),
+        "geoai_prototype_run": workflow_summary.get("geoai_prototype_run"),
+        "exports": workflow_summary.get("exports"),
+        "spatial_qa": workflow_summary.get("spatial_qa"),
+        "log": str(OUT / "logs" / "workflow_e2e_summary.json"),
+    }
+
     from nfi_national_html import produce_national_html_products
 
     html_products = produce_national_html_products(
@@ -560,6 +585,7 @@ def run_national_pipeline(cfg: dict, out_root: Path | None = None) -> dict[str, 
         "fig_paths": fig_paths,
         "map_paths": map_paths,
         "html_products": html_products,
+        "workflow_summary": workflow_summary,
         "run_summary": run_summary,
         "OUT": OUT,
     }

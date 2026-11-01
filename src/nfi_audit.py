@@ -74,7 +74,7 @@ def ensure_output_dirs(cfg: dict) -> Path:
     out = Path(cfg["paths"]["output_root"])
     for sub in [
         "audit", "validated", "figures", "logs", "gates", "documents",
-        "stages", "maps",
+        "stages", "maps", "exports",
     ]:
         (out / sub).mkdir(parents=True, exist_ok=True)
     return out
