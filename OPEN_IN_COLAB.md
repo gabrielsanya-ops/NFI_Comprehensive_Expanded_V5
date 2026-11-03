@@ -29,7 +29,7 @@ Local notebooks:
 3. Run **Section 0** imports
 4. Either run **Sections 2 to 15** step-by-step, or jump to **Section 16** one-shot
 5. Finish with **Section 17** output checklist
-6. Download / open `outputs_national_v5/documents/NFI_national_geopipeline_report.html` and `maps/html_atlas/index.html`
+6. Open the green **HTML deliverable** buttons (Colab-safe HTTP proxy — `file://` links do not work in Colab). Or download from the Files pane: `outputs_national_v5/documents/NFI_national_geopipeline_report.html` and `maps/html_atlas/index.html`
 
 National CLI (local or after clone):
 `python run_national_pipeline.py`

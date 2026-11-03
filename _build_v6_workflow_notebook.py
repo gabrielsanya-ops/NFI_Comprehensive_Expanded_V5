@@ -215,6 +215,7 @@ from nfi_national_pipeline import (
 from nfi_national_thematic_maps import produce_national_thematic_maps
 from nfi_national_atlas_dashboard import write_national_dashboard_atlas
 from nfi_national_html import write_national_html_report
+from nfi_browser_open import browser_url, deliverable_links_html, iframe_src
 from nfi_datascience import univariate_numeric, bivariate_numeric, missingness_report
 from nfi_workflow_e2e import (
     workflow_catalog, run_workflow_enhancements, national_integrity_scorecard,
@@ -456,9 +457,14 @@ for theme, path in (THEMATIC.get("static") or {}).items():
         display(Image(filename=str(p)))
         shown += 1
 try:
-    display(IFrame(src=Path(ATLAS_INDEX).resolve().as_uri(), width="100%", height=520))
+    display(IFrame(src=iframe_src(ATLAS_INDEX, serve_root=OUT), width="100%", height=520))
 except Exception as e:
     print("IFrame skipped:", e)
+    try:
+        href = browser_url(ATLAS_INDEX, serve_root=OUT)
+        display(HTML(f'<p>Open atlas in a new tab: <a href="{href}" target="_blank" rel="noopener noreferrer">{href}</a></p>'))
+    except Exception as e2:
+        print("Atlas open-link skipped:", e2)
 """))
 
     c.append(md("""<a id="w14"></a>
@@ -614,20 +620,11 @@ links = [
     ("Interactive map atlas (entire Kingdom)", ATLAS_INDEX),
     ("Methodological workflow plate", OUT / "documents" / "NFI_National_Methodological_Workflow_Latest.jpg"),
 ]
-bits = ['<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.5">']
-bits.append('<h3 style="color:#1b5e20;margin:0 0 8px">Open national HTML deliverables</h3>')
 rows = []
 for label, path in links:
     ok = path.exists()
     rows.append({"deliverable": label, "exists": ok, "bytes": path.stat().st_size if ok else 0, "path": str(path)})
-    if ok and path.suffix.lower() in {".html", ".htm"}:
-        bits.append(
-            f'<p style="margin:8px 0"><a style="display:inline-block;padding:10px 14px;background:#14351c;color:#fff;'
-            f'text-decoration:none;border-radius:8px;font-weight:600" href="{path.resolve().as_uri()}" target="_blank">{label}</a>'
-            f'<br/><code style="font-size:12px">{path}</code></p>'
-        )
-bits.append("</div>")
-display(HTML("".join(bits)))
+display(HTML(deliverable_links_html(links, serve_root=OUT)))
 display(pd.DataFrame(rows))
 
 expected = [
