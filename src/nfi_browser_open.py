@@ -130,10 +130,12 @@ def display_html_deliverables(
     *,
     serve_root: PathLike,
     title: str = "Open national HTML deliverables",
-    iframe_height: int = 640,
+    iframe_height: int = 640,  # kept for call-site compatibility; unused (tabs only)
 ) -> None:
-    """Show clickable HTML deliverables that work in Colab and local Jupyter."""
+    """Show green buttons that open each HTML deliverable in a separate browser tab."""
     from IPython.display import HTML, Javascript, display
+
+    del iframe_height  # tabs-only UI
 
     root_p = Path(serve_root).resolve()
     payload = []
@@ -160,18 +162,11 @@ def display_html_deliverables(
         )))
         return
 
+    # Colab: resolve proxyPort inside the output frame, then target=_blank links
+    # (same UX as before; file:// cannot open from Colab).
     port = ensure_http_root(root_p)
-    display(HTML(
-        f'<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif">'
-        f'<h3 style="color:#1b5e20;margin:0 0 8px">{html.escape(title)}</h3>'
-        f'<p style="margin:0 0 10px;color:#333;font-size:13px">'
-        f"Colab blocks <code>file://</code> paths. Buttons below use Colab&rsquo;s HTTP "
-        f"proxy. Prefer <b>Show here</b> if a new tab is blank.</p></div>"
-    ))
-
-    # Build anchors/iframes inside the Colab output frame (required for proxyPort).
     code = """
-    (async (port, items, height, element) => {
+    (async (port, items, title, element) => {
       if (!google.colab.kernel.accessAllowed) {
         element.appendChild(document.createTextNode(
           'Colab kernel access not allowed — re-run this cell while connected.'));
@@ -182,34 +177,31 @@ def display_html_deliverables(
       wrap.style.fontFamily = 'IBM Plex Sans, Segoe UI, sans-serif';
       wrap.style.lineHeight = '1.5';
 
-      const viewer = document.createElement('iframe');
-      viewer.width = '100%';
-      viewer.height = String(height);
-      viewer.style.border = '1px solid #cfd8dc';
-      viewer.style.borderRadius = '8px';
-      viewer.style.marginTop = '12px';
-      viewer.style.display = 'none';
-      viewer.allow = 'clipboard-read; clipboard-write';
+      const heading = document.createElement('h3');
+      heading.style.cssText = 'color:#1b5e20;margin:0 0 8px';
+      heading.textContent = title;
+      wrap.appendChild(heading);
 
       for (const it of items) {
         const row = document.createElement('p');
         row.style.margin = '8px 0';
 
+        const href = new URL(it.path, base).toString();
         const openBtn = document.createElement('a');
-        openBtn.href = new URL(it.path, base).toString();
+        openBtn.href = href;
         openBtn.target = '_blank';
         openBtn.rel = 'noopener noreferrer';
         openBtn.textContent = it.label;
-        openBtn.style.cssText = 'display:inline-block;padding:10px 14px;background:#14351c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:8px';
-
-        const showBtn = document.createElement('button');
-        showBtn.type = 'button';
-        showBtn.textContent = 'Show here';
-        showBtn.style.cssText = 'display:inline-block;padding:10px 14px;background:#eceff1;color:#14351c;border:1px solid #90a4ae;border-radius:8px;font-weight:600;cursor:pointer';
-        showBtn.onclick = () => {
-          viewer.style.display = 'block';
-          viewer.src = new URL(it.path, base).toString();
-        };
+        openBtn.style.cssText = 'display:inline-block;padding:10px 14px;background:#14351c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600';
+        openBtn.addEventListener('click', (ev) => {
+          // Force a real new tab even if Colab intercepts default navigation.
+          ev.preventDefault();
+          const w = window.open(href, '_blank', 'noopener,noreferrer');
+          if (!w) {
+            // Popup blocked: fall back to default anchor navigation.
+            window.top.open(href, '_blank');
+          }
+        });
 
         const codeEl = document.createElement('code');
         codeEl.style.display = 'block';
@@ -218,18 +210,10 @@ def display_html_deliverables(
         codeEl.textContent = it.disk;
 
         row.appendChild(openBtn);
-        row.appendChild(showBtn);
         row.appendChild(codeEl);
         wrap.appendChild(row);
       }
-      wrap.appendChild(viewer);
       element.appendChild(wrap);
-
-      // Auto-show the first deliverable in-notebook (most reliable on Colab).
-      if (items.length) {
-        viewer.style.display = 'block';
-        viewer.src = new URL(items[0].path, base).toString();
-      }
     })
-    """ + f"({int(port)}, {json.dumps(payload)}, {int(iframe_height)}, window.element)"
+    """ + f"({int(port)}, {json.dumps(payload)}, {json.dumps(title)}, window.element)"
     display(Javascript(code))

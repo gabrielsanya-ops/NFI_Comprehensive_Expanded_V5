@@ -29,7 +29,7 @@ Local notebooks:
 3. Run **Section 0** imports
 4. Either run **Sections 2 to 15** step-by-step, or jump to **Section 16** one-shot
 5. Finish with **Section 17** output checklist
-6. Re-run **bootstrap** (pulls latest `src/`), then the deliverables cell. Use the green label to try a new tab, or **Show here** to embed the HTML in the cell (most reliable on Colab). Files pane download still works as a fallback.
+6. Re-run **bootstrap** (pulls latest `src/`), then the deliverables cell. Green buttons open each HTML in a **separate browser tab** (Colab HTTP proxy — not `file://`).
 
 National CLI (local or after clone):
 `python run_national_pipeline.py`
