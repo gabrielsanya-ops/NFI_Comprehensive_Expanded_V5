@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Browser-openable HTML deliverables for local Jupyter and Google Colab.
+"""Open HTML deliverables in an external browser tab (never inside the .ipynb).
 
-Colab blocks ``file://`` links from the notebook origin. Chrome also broke
-``serve_kernel_port_as_window`` (storage partitioning). Working approach:
-serve files over HTTP on the kernel, then create clickable links / iframes
-in the Colab output frame via ``google.colab.kernel.proxyPort``.
+Colab blocks ``file://`` links from the notebook origin. Working approach:
+serve files over HTTP on the kernel, then create ``target=_blank`` links in the
+Colab output frame via ``google.colab.kernel.proxyPort`` so each HTML opens
+outside the notebook.
 """
 
 from __future__ import annotations

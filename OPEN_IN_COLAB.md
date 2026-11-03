@@ -29,7 +29,7 @@ Local notebooks:
 3. Run **Section 0** imports
 4. Either run **Sections 2 to 15** step-by-step, or jump to **Section 16** one-shot
 5. Finish with **Section 17** output checklist
-6. Re-run **bootstrap** (pulls latest `src/`), then the deliverables cell. Green buttons open each HTML in a **separate browser tab** (Colab HTTP proxy — not `file://`).
+6. Re-run **bootstrap** (pulls latest `src/`), then atlas / deliverables cells. Green buttons open each HTML **outside** the notebook in a separate browser tab (never embedded in the `.ipynb`).
 
 National CLI (local or after clone):
 `python run_national_pipeline.py`

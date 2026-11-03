@@ -464,18 +464,11 @@ for theme, path in (THEMATIC.get("static") or {}).items():
         display(Markdown(f"**{theme}**"))
         display(Image(filename=str(p)))
         shown += 1
-try:
-    from nfi_browser_open import in_colab, ensure_http_root, _rel_under
-    if in_colab():
-        from google.colab import output as colab_output
-        port = ensure_http_root(OUT)
-        rel = "/" + _rel_under(Path(ATLAS_INDEX), Path(OUT))
-        colab_output.serve_kernel_port_as_iframe(port, path=rel, height="520")
-    else:
-        display(IFrame(src=iframe_src(ATLAS_INDEX, serve_root=OUT), width="100%", height=520))
-except Exception as e:
-    print("IFrame skipped:", e)
-    display_html_deliverables([("Interactive map atlas (entire Kingdom)", Path(ATLAS_INDEX))], serve_root=OUT)
+# Open atlas outside the notebook (separate browser tab) — never embed in the .ipynb.
+display_html_deliverables(
+    [("Interactive map atlas (entire Kingdom)", Path(ATLAS_INDEX))],
+    serve_root=OUT,
+)
 """))
 
     c.append(md("""<a id="w14"></a>
