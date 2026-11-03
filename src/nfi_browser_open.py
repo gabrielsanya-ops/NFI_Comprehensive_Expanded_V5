@@ -108,15 +108,17 @@ def _links_block_html(
     ]
     for label, href, disk in entries:
         safe_href = html.escape(href, quote=True)
-        name = Path(disk).name
+        full_path = html.escape(disk)
         bits.append(
-            "<li style=\"margin:0 0 12px\">"
+            "<li style=\"margin:0 0 14px\">"
             f"<div style=\"font-weight:600\">{html.escape(label)}</div>"
-            f"<div style=\"font-size:12px;color:#555\">HTML file: "
-            f"<code>{html.escape(name)}</code></div>"
-            f'<div><a href="{safe_href}" target="_blank" rel="noopener noreferrer" '
+            f'<div style="margin:4px 0">'
+            f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" '
+            f'style="word-break:break-all;font-family:Consolas,Monaco,monospace;'
+            f'font-size:13px">{full_path}</a></div>'
+            f"<div style=\"font-size:11px;color:#666\">Open URL: "
+            f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" '
             f'style="word-break:break-all">{html.escape(href)}</a></div>'
-            f"<div style=\"font-size:11px;color:#888\"><code>{html.escape(disk)}</code></div>"
             "</li>"
         )
     bits.append("</ul></div>")
@@ -186,8 +188,8 @@ def display_html_deliverables(
         return
 
     display(HTML(_links_block_html(entries, title=title)))
-    # Also print plain URLs so they stay visible / copyable below the HTML block.
-    print("Openable links (separate browser tabs):")
-    for label, href, _disk in entries:
+    print("Links to HTML files (full path → opens in a new tab):")
+    for label, href, disk in entries:
         print(f"  - {label}")
+        print(f"    {disk}")
         print(f"    {href}")
