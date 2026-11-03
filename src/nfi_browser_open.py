@@ -2,15 +2,13 @@
 """Open HTML deliverables in an external browser tab (never inside the .ipynb).
 
 Colab blocks ``file://`` links from the notebook origin. Working approach:
-serve files over HTTP on the kernel, then create ``target=_blank`` links in the
-Colab output frame via ``google.colab.kernel.proxyPort`` so each HTML opens
-outside the notebook.
+serve files over HTTP on the kernel, resolve ``google.colab.kernel.proxyPort``,
+then show plain ``target=_blank`` links (button + URL text) in cell output.
 """
 
 from __future__ import annotations
 
 import html
-import json
 import socket
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -93,8 +91,36 @@ def browser_url(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
 
 
 def iframe_src(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
-    """URL suitable for ``IPython.display.IFrame`` (local) / proxy (Colab)."""
+    """URL suitable for external open (legacy name kept for call sites)."""
     return browser_url(path, serve_root=serve_root)
+
+
+def _links_block_html(
+    entries: Sequence[tuple[str, str, str]],
+    *,
+    title: str,
+) -> str:
+    """Build HTML: green button + openable URL link below + disk path."""
+    bits = [
+        '<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.5">',
+        f'<h3 style="color:#1b5e20;margin:0 0 8px">{html.escape(title)}</h3>',
+    ]
+    for label, href, disk in entries:
+        safe_href = html.escape(href, quote=True)
+        bits.append(
+            f'<p style="margin:10px 0 14px">'
+            f'<a style="display:inline-block;padding:10px 14px;background:#14351c;color:#fff;'
+            f'text-decoration:none;border-radius:8px;font-weight:600" '
+            f'href="{safe_href}" target="_blank" rel="noopener noreferrer">'
+            f'{html.escape(label)}</a>'
+            f'<br/><span style="font-size:12px;color:#555">Open link:</span> '
+            f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" '
+            f'style="font-size:12px;word-break:break-all">{html.escape(href)}</a>'
+            f'<br/><code style="font-size:11px;color:#666">{html.escape(disk)}</code>'
+            f"</p>"
+        )
+    bits.append("</div>")
+    return "".join(bits)
 
 
 def deliverable_links_html(
@@ -103,26 +129,16 @@ def deliverable_links_html(
     serve_root: PathLike,
     title: str = "Open national HTML deliverables",
 ) -> str:
-    """Local Jupyter: static ``file://`` buttons. Prefer ``display_html_deliverables`` on Colab."""
+    """Local Jupyter: static ``file://`` buttons with URL text below."""
     root_p = Path(serve_root).resolve()
-    bits = [
-        '<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.5">',
-        f'<h3 style="color:#1b5e20;margin:0 0 8px">{html.escape(title)}</h3>',
-    ]
+    entries = []
     for label, path in items:
         path_p = Path(path)
         if not path_p.exists() or path_p.suffix.lower() not in {".html", ".htm"}:
             continue
         href = path_p.resolve().as_uri()
-        bits.append(
-            f'<p style="margin:8px 0"><a style="display:inline-block;padding:10px 14px;'
-            f"background:#14351c;color:#fff;text-decoration:none;border-radius:8px;"
-            f'font-weight:600" href="{html.escape(href, quote=True)}" target="_blank" '
-            f'rel="noopener noreferrer">{html.escape(label)}</a>'
-            f'<br/><code style="font-size:12px">{html.escape(str(path_p))}</code></p>'
-        )
-    bits.append("</div>")
-    return "".join(bits)
+        entries.append((label, href, str(path_p)))
+    return _links_block_html(entries, title=title)
 
 
 def display_html_deliverables(
@@ -132,88 +148,46 @@ def display_html_deliverables(
     title: str = "Open national HTML deliverables",
     iframe_height: int = 640,  # kept for call-site compatibility; unused (tabs only)
 ) -> None:
-    """Show green buttons that open each HTML deliverable in a separate browser tab."""
-    from IPython.display import HTML, Javascript, display
+    """Show green buttons and the openable URLs below them (external tabs only)."""
+    from IPython.display import HTML, display
 
     del iframe_height  # tabs-only UI
 
     root_p = Path(serve_root).resolve()
-    payload = []
-    for label, path in items:
-        path_p = Path(path)
-        if not path_p.exists() or path_p.suffix.lower() not in {".html", ".htm"}:
-            continue
-        try:
-            rel = "/" + _rel_under(path_p, root_p)
-        except ValueError:
-            continue
-        payload.append({"label": label, "path": rel, "disk": str(path_p)})
+    entries: list[tuple[str, str, str]] = []
 
-    if not payload:
-        display(HTML(f"<p><b>{html.escape(title)}</b> — no HTML files found under "
-                     f"<code>{html.escape(str(root_p))}</code>.</p>"))
+    if in_colab():
+        port = ensure_http_root(root_p)
+        from google.colab.output import eval_js
+
+        base = str(eval_js(f"google.colab.kernel.proxyPort({int(port)})")).rstrip("/")
+        for label, path in items:
+            path_p = Path(path)
+            if not path_p.exists() or path_p.suffix.lower() not in {".html", ".htm"}:
+                continue
+            try:
+                rel = _rel_under(path_p, root_p)
+            except ValueError:
+                continue
+            href = f"{base}/{rel}"
+            entries.append((label, href, str(path_p)))
+    else:
+        for label, path in items:
+            path_p = Path(path)
+            if not path_p.exists() or path_p.suffix.lower() not in {".html", ".htm"}:
+                continue
+            entries.append((label, path_p.resolve().as_uri(), str(path_p)))
+
+    if not entries:
+        display(HTML(
+            f"<p><b>{html.escape(title)}</b> — no HTML files found under "
+            f"<code>{html.escape(str(root_p))}</code>.</p>"
+        ))
         return
 
-    if not in_colab():
-        display(HTML(deliverable_links_html(
-            [(x["label"], x["disk"]) for x in payload],
-            serve_root=root_p,
-            title=title,
-        )))
-        return
-
-    # Colab: resolve proxyPort inside the output frame, then target=_blank links
-    # (same UX as before; file:// cannot open from Colab).
-    port = ensure_http_root(root_p)
-    code = """
-    (async (port, items, title, element) => {
-      if (!google.colab.kernel.accessAllowed) {
-        element.appendChild(document.createTextNode(
-          'Colab kernel access not allowed — re-run this cell while connected.'));
-        return;
-      }
-      const base = await google.colab.kernel.proxyPort(port);
-      const wrap = document.createElement('div');
-      wrap.style.fontFamily = 'IBM Plex Sans, Segoe UI, sans-serif';
-      wrap.style.lineHeight = '1.5';
-
-      const heading = document.createElement('h3');
-      heading.style.cssText = 'color:#1b5e20;margin:0 0 8px';
-      heading.textContent = title;
-      wrap.appendChild(heading);
-
-      for (const it of items) {
-        const row = document.createElement('p');
-        row.style.margin = '8px 0';
-
-        const href = new URL(it.path, base).toString();
-        const openBtn = document.createElement('a');
-        openBtn.href = href;
-        openBtn.target = '_blank';
-        openBtn.rel = 'noopener noreferrer';
-        openBtn.textContent = it.label;
-        openBtn.style.cssText = 'display:inline-block;padding:10px 14px;background:#14351c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600';
-        openBtn.addEventListener('click', (ev) => {
-          // Force a real new tab even if Colab intercepts default navigation.
-          ev.preventDefault();
-          const w = window.open(href, '_blank', 'noopener,noreferrer');
-          if (!w) {
-            // Popup blocked: fall back to default anchor navigation.
-            window.top.open(href, '_blank');
-          }
-        });
-
-        const codeEl = document.createElement('code');
-        codeEl.style.display = 'block';
-        codeEl.style.fontSize = '12px';
-        codeEl.style.marginTop = '4px';
-        codeEl.textContent = it.disk;
-
-        row.appendChild(openBtn);
-        row.appendChild(codeEl);
-        wrap.appendChild(row);
-      }
-      element.appendChild(wrap);
-    })
-    """ + f"({int(port)}, {json.dumps(payload)}, {json.dumps(title)}, window.element)"
-    display(Javascript(code))
+    display(HTML(_links_block_html(entries, title=title)))
+    # Also print plain URLs so they stay visible / copyable below the HTML block.
+    print("Openable links (separate browser tabs):")
+    for label, href, _disk in entries:
+        print(f"  - {label}")
+        print(f"    {href}")
