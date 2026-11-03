@@ -619,16 +619,20 @@ HTML_PRODUCTS["html_report"] = str(REPORT_PATH)
 (OUT / "documents" / "national_html_manifest.json").write_text(json.dumps(HTML_PRODUCTS, indent=2), encoding="utf-8")
 
 ATLAS_INDEX = Path(HTML_PRODUCTS.get("atlas_index") or OUT / "maps" / "html_atlas" / "index.html")
-links = [
+html_files = [
     ("Methodology + results HTML report", Path(REPORT_PATH)),
     ("Interactive map atlas (entire Kingdom)", ATLAS_INDEX),
+]
+# Clickable links to the .html files (open in a separate browser tab).
+display_html_deliverables(html_files, serve_root=OUT, title="Links to HTML files")
+
+links = html_files + [
     ("Methodological workflow plate", OUT / "documents" / "NFI_National_Methodological_Workflow_Latest.jpg"),
 ]
 rows = []
 for label, path in links:
     ok = path.exists()
     rows.append({"deliverable": label, "exists": ok, "bytes": path.stat().st_size if ok else 0, "path": str(path)})
-display_html_deliverables(links, serve_root=OUT)
 display(pd.DataFrame(rows))
 
 expected = [

@@ -100,26 +100,26 @@ def _links_block_html(
     *,
     title: str,
 ) -> str:
-    """Build HTML: green button + openable URL link below + disk path."""
+    """Build a plain list of links to the HTML files (open in a new tab)."""
     bits = [
-        '<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.5">',
-        f'<h3 style="color:#1b5e20;margin:0 0 8px">{html.escape(title)}</h3>',
+        '<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.55">',
+        f'<h3 style="color:#1b5e20;margin:0 0 10px">{html.escape(title)}</h3>',
+        "<ul style=\"padding-left:1.2em;margin:0\">",
     ]
     for label, href, disk in entries:
         safe_href = html.escape(href, quote=True)
+        name = Path(disk).name
         bits.append(
-            f'<p style="margin:10px 0 14px">'
-            f'<a style="display:inline-block;padding:10px 14px;background:#14351c;color:#fff;'
-            f'text-decoration:none;border-radius:8px;font-weight:600" '
-            f'href="{safe_href}" target="_blank" rel="noopener noreferrer">'
-            f'{html.escape(label)}</a>'
-            f'<br/><span style="font-size:12px;color:#555">Open link:</span> '
-            f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" '
-            f'style="font-size:12px;word-break:break-all">{html.escape(href)}</a>'
-            f'<br/><code style="font-size:11px;color:#666">{html.escape(disk)}</code>'
-            f"</p>"
+            "<li style=\"margin:0 0 12px\">"
+            f"<div style=\"font-weight:600\">{html.escape(label)}</div>"
+            f"<div style=\"font-size:12px;color:#555\">HTML file: "
+            f"<code>{html.escape(name)}</code></div>"
+            f'<div><a href="{safe_href}" target="_blank" rel="noopener noreferrer" '
+            f'style="word-break:break-all">{html.escape(href)}</a></div>'
+            f"<div style=\"font-size:11px;color:#888\"><code>{html.escape(disk)}</code></div>"
+            "</li>"
         )
-    bits.append("</div>")
+    bits.append("</ul></div>")
     return "".join(bits)
 
 
@@ -127,9 +127,9 @@ def deliverable_links_html(
     items: Sequence[LinkItem],
     *,
     serve_root: PathLike,
-    title: str = "Open national HTML deliverables",
+    title: str = "Links to HTML files",
 ) -> str:
-    """Local Jupyter: static ``file://`` buttons with URL text below."""
+    """Local Jupyter: static ``file://`` links to the HTML files."""
     root_p = Path(serve_root).resolve()
     entries = []
     for label, path in items:
@@ -145,10 +145,10 @@ def display_html_deliverables(
     items: Sequence[LinkItem],
     *,
     serve_root: PathLike,
-    title: str = "Open national HTML deliverables",
+    title: str = "Links to HTML files",
     iframe_height: int = 640,  # kept for call-site compatibility; unused (tabs only)
 ) -> None:
-    """Show green buttons and the openable URLs below them (external tabs only)."""
+    """List clickable links to the HTML files (open outside the notebook)."""
     from IPython.display import HTML, display
 
     del iframe_height  # tabs-only UI
