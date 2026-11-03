@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Browser-openable URLs for local Jupyter and Google Colab.
+"""Browser-openable HTML deliverables for local Jupyter and Google Colab.
 
-Colab blocks file:// links from the notebook origin. Serve files over a local
-HTTP port and resolve the Colab proxy URL so target=_blank / IFrame work.
+Colab blocks ``file://`` links from the notebook origin. Chrome also broke
+``serve_kernel_port_as_window`` (storage partitioning). Working approach:
+serve files over HTTP on the kernel, then create clickable links / iframes
+in the Colab output frame via ``google.colab.kernel.proxyPort``.
 """
 
 from __future__ import annotations
 
 import html
+import json
 import socket
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 PathLike = Union[str, Path]
 LinkItem = Tuple[str, PathLike]
@@ -62,6 +65,10 @@ def ensure_http_root(root: PathLike) -> int:
     return port
 
 
+def _rel_under(path: Path, root: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
 def browser_url(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
     """Return a URL the browser can open (file:// locally; Colab HTTPS proxy)."""
     path_p = Path(path).resolve()
@@ -73,7 +80,7 @@ def browser_url(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
 
     root_p = Path(serve_root).resolve() if serve_root is not None else path_p.parent
     try:
-        rel = path_p.relative_to(root_p).as_posix()
+        rel = _rel_under(path_p, root_p)
     except ValueError:
         root_p = path_p.parent
         rel = path_p.name
@@ -85,38 +92,28 @@ def browser_url(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
     return f"{str(base).rstrip('/')}/{rel}"
 
 
+def iframe_src(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
+    """URL suitable for ``IPython.display.IFrame`` (local) / proxy (Colab)."""
+    return browser_url(path, serve_root=serve_root)
+
+
 def deliverable_links_html(
     items: Sequence[LinkItem],
     *,
     serve_root: PathLike,
     title: str = "Open national HTML deliverables",
 ) -> str:
-    """Build green open-in-new-tab buttons (Colab-safe)."""
+    """Local Jupyter: static ``file://`` buttons. Prefer ``display_html_deliverables`` on Colab."""
     root_p = Path(serve_root).resolve()
     bits = [
         '<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif;line-height:1.5">',
         f'<h3 style="color:#1b5e20;margin:0 0 8px">{html.escape(title)}</h3>',
     ]
-    if in_colab():
-        bits.append(
-            '<p style="margin:0 0 10px;color:#333;font-size:13px">'
-            "Colab cannot open <code>file://</code> paths. Links below use an HTTP "
-            "proxy so they open in a real browser tab.</p>"
-        )
-
     for label, path in items:
         path_p = Path(path)
         if not path_p.exists() or path_p.suffix.lower() not in {".html", ".htm"}:
             continue
-        try:
-            href = browser_url(path_p, serve_root=root_p)
-        except Exception as exc:
-            bits.append(
-                f'<p style="margin:8px 0;color:#b71c1c"><b>{html.escape(label)}</b> — '
-                f"could not build open URL ({html.escape(str(exc))}). "
-                f"Download from the Files pane: <code>{html.escape(str(path_p))}</code></p>"
-            )
-            continue
+        href = path_p.resolve().as_uri()
         bits.append(
             f'<p style="margin:8px 0"><a style="display:inline-block;padding:10px 14px;'
             f"background:#14351c;color:#fff;text-decoration:none;border-radius:8px;"
@@ -128,6 +125,111 @@ def deliverable_links_html(
     return "".join(bits)
 
 
-def iframe_src(path: PathLike, serve_root: Optional[PathLike] = None) -> str:
-    """URL suitable for ``IPython.display.IFrame``."""
-    return browser_url(path, serve_root=serve_root)
+def display_html_deliverables(
+    items: Sequence[LinkItem],
+    *,
+    serve_root: PathLike,
+    title: str = "Open national HTML deliverables",
+    iframe_height: int = 640,
+) -> None:
+    """Show clickable HTML deliverables that work in Colab and local Jupyter."""
+    from IPython.display import HTML, Javascript, display
+
+    root_p = Path(serve_root).resolve()
+    payload = []
+    for label, path in items:
+        path_p = Path(path)
+        if not path_p.exists() or path_p.suffix.lower() not in {".html", ".htm"}:
+            continue
+        try:
+            rel = "/" + _rel_under(path_p, root_p)
+        except ValueError:
+            continue
+        payload.append({"label": label, "path": rel, "disk": str(path_p)})
+
+    if not payload:
+        display(HTML(f"<p><b>{html.escape(title)}</b> — no HTML files found under "
+                     f"<code>{html.escape(str(root_p))}</code>.</p>"))
+        return
+
+    if not in_colab():
+        display(HTML(deliverable_links_html(
+            [(x["label"], x["disk"]) for x in payload],
+            serve_root=root_p,
+            title=title,
+        )))
+        return
+
+    port = ensure_http_root(root_p)
+    display(HTML(
+        f'<div style="font-family:IBM Plex Sans,Segoe UI,sans-serif">'
+        f'<h3 style="color:#1b5e20;margin:0 0 8px">{html.escape(title)}</h3>'
+        f'<p style="margin:0 0 10px;color:#333;font-size:13px">'
+        f"Colab blocks <code>file://</code> paths. Buttons below use Colab&rsquo;s HTTP "
+        f"proxy. Prefer <b>Show here</b> if a new tab is blank.</p></div>"
+    ))
+
+    # Build anchors/iframes inside the Colab output frame (required for proxyPort).
+    code = """
+    (async (port, items, height, element) => {
+      if (!google.colab.kernel.accessAllowed) {
+        element.appendChild(document.createTextNode(
+          'Colab kernel access not allowed — re-run this cell while connected.'));
+        return;
+      }
+      const base = await google.colab.kernel.proxyPort(port);
+      const wrap = document.createElement('div');
+      wrap.style.fontFamily = 'IBM Plex Sans, Segoe UI, sans-serif';
+      wrap.style.lineHeight = '1.5';
+
+      const viewer = document.createElement('iframe');
+      viewer.width = '100%';
+      viewer.height = String(height);
+      viewer.style.border = '1px solid #cfd8dc';
+      viewer.style.borderRadius = '8px';
+      viewer.style.marginTop = '12px';
+      viewer.style.display = 'none';
+      viewer.allow = 'clipboard-read; clipboard-write';
+
+      for (const it of items) {
+        const row = document.createElement('p');
+        row.style.margin = '8px 0';
+
+        const openBtn = document.createElement('a');
+        openBtn.href = new URL(it.path, base).toString();
+        openBtn.target = '_blank';
+        openBtn.rel = 'noopener noreferrer';
+        openBtn.textContent = it.label;
+        openBtn.style.cssText = 'display:inline-block;padding:10px 14px;background:#14351c;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:8px';
+
+        const showBtn = document.createElement('button');
+        showBtn.type = 'button';
+        showBtn.textContent = 'Show here';
+        showBtn.style.cssText = 'display:inline-block;padding:10px 14px;background:#eceff1;color:#14351c;border:1px solid #90a4ae;border-radius:8px;font-weight:600;cursor:pointer';
+        showBtn.onclick = () => {
+          viewer.style.display = 'block';
+          viewer.src = new URL(it.path, base).toString();
+        };
+
+        const codeEl = document.createElement('code');
+        codeEl.style.display = 'block';
+        codeEl.style.fontSize = '12px';
+        codeEl.style.marginTop = '4px';
+        codeEl.textContent = it.disk;
+
+        row.appendChild(openBtn);
+        row.appendChild(showBtn);
+        row.appendChild(codeEl);
+        wrap.appendChild(row);
+      }
+      wrap.appendChild(viewer);
+      element.appendChild(wrap);
+
+      // Auto-show the first deliverable in-notebook (most reliable on Colab).
+      if (items.length) {
+        viewer.style.display = 'block';
+        viewer.src = new URL(items[0].path, base).toString();
+      }
+    })
+    """ + f"({int(port)}, {json.dumps(payload)}, {int(iframe_height)}, window.element)"
+    display(Javascript(code))

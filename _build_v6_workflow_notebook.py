@@ -144,6 +144,14 @@ if ROOT is None or not looks_like_root(ROOT):
 os.chdir(ROOT)
 sys.path.insert(0, str(ROOT / "src"))
 
+if IN_COLAB and (ROOT / ".git").exists():
+    print("Updating package from GitHub (HTML open fix)...")
+    try:
+        subprocess.check_call(["git", "fetch", "--depth", "1", "origin", "master"], cwd=str(ROOT))
+        subprocess.check_call(["git", "reset", "--hard", "origin/master"], cwd=str(ROOT))
+    except Exception as e:
+        print("git update skipped:", e)
+
 if WORK_DISK is not None:
     os.environ["NFI_OUTPUT_NATIONAL_ROOT"] = str((WORK_DISK / "outputs_national_v5").resolve())
 
@@ -215,7 +223,7 @@ from nfi_national_pipeline import (
 from nfi_national_thematic_maps import produce_national_thematic_maps
 from nfi_national_atlas_dashboard import write_national_dashboard_atlas
 from nfi_national_html import write_national_html_report
-from nfi_browser_open import browser_url, deliverable_links_html, iframe_src
+from nfi_browser_open import browser_url, display_html_deliverables, iframe_src
 from nfi_datascience import univariate_numeric, bivariate_numeric, missingness_report
 from nfi_workflow_e2e import (
     workflow_catalog, run_workflow_enhancements, national_integrity_scorecard,
@@ -457,14 +465,17 @@ for theme, path in (THEMATIC.get("static") or {}).items():
         display(Image(filename=str(p)))
         shown += 1
 try:
-    display(IFrame(src=iframe_src(ATLAS_INDEX, serve_root=OUT), width="100%", height=520))
+    from nfi_browser_open import in_colab, ensure_http_root, _rel_under
+    if in_colab():
+        from google.colab import output as colab_output
+        port = ensure_http_root(OUT)
+        rel = "/" + _rel_under(Path(ATLAS_INDEX), Path(OUT))
+        colab_output.serve_kernel_port_as_iframe(port, path=rel, height="520")
+    else:
+        display(IFrame(src=iframe_src(ATLAS_INDEX, serve_root=OUT), width="100%", height=520))
 except Exception as e:
     print("IFrame skipped:", e)
-    try:
-        href = browser_url(ATLAS_INDEX, serve_root=OUT)
-        display(HTML(f'<p>Open atlas in a new tab: <a href="{href}" target="_blank" rel="noopener noreferrer">{href}</a></p>'))
-    except Exception as e2:
-        print("Atlas open-link skipped:", e2)
+    display_html_deliverables([("Interactive map atlas (entire Kingdom)", Path(ATLAS_INDEX))], serve_root=OUT)
 """))
 
     c.append(md("""<a id="w14"></a>
@@ -624,7 +635,7 @@ rows = []
 for label, path in links:
     ok = path.exists()
     rows.append({"deliverable": label, "exists": ok, "bytes": path.stat().st_size if ok else 0, "path": str(path)})
-display(HTML(deliverable_links_html(links, serve_root=OUT)))
+display_html_deliverables(links, serve_root=OUT)
 display(pd.DataFrame(rows))
 
 expected = [
